@@ -11,9 +11,14 @@ impl Piece {
     pub const BLACK: u32 = 16;
 
     pub fn is_color(piece: u32, color: u32) -> bool {
-        piece & color != 0
+        (piece & (Self::WHITE | Self::BLACK)) == color
+    }
+    pub fn is_type(piece: u32, piece_type: u32) -> bool {
+        (piece & 0b00111) == piece_type
     }
     pub fn is_sliding_piece(piece: u32) -> bool {
-        piece == Piece::BISHOP || piece == Piece::ROOK || piece == Piece::QUEEN
+        Piece::is_type(piece, Piece::BISHOP)
+            || Piece::is_type(piece, Piece::ROOK)
+            || Piece::is_type(piece, Piece::QUEEN)
     }
 }

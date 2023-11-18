@@ -1,6 +1,9 @@
 use crate::{chess_move::Move, piece::Piece};
-const STATING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR";
-pub const DIRECTION_OFFSETS: [i32; 8] = [8, -8, -1, 1, 7, -7, 9, -9];
+pub const STATING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR";
+// first 8 are offsets for north, south, west, east, north-west, south-east, north-east, south-west
+// second 8 are offsets for knight moves
+pub const DIRECTION_OFFSETS: [i32; 16] =
+    [8, -8, -1, 1, 7, -7, 9, -9, 6, -6, 15, -15, 17, -17, 10, -10];
 
 lazy_static! {
     pub static ref NUM_SQUARES_TO_EDGE: [[usize; 8]; 64] = precomputed_move_data();
@@ -124,17 +127,27 @@ impl Board {
         }
         board
     }
-    pub fn make(&mut self, move_to_make: Move) -> bool {
+    pub fn make(&mut self, move_to_make: &Move) -> bool {
         if move_to_make.start_square == move_to_make.target_square {
+            println!("start square and target square are the same");
             return false;
         }
-        if self.squares[move_to_make.start_square as usize] == Piece::NONE {
+        if Piece::is_type(
+            self.squares[move_to_make.start_square as usize],
+            Piece::NONE,
+        ) {
+            println!("no piece on start square");
+            println!(
+                "start square: {}",
+                self.squares[move_to_make.start_square as usize]
+            );
             return false;
         }
         if !Piece::is_color(
             self.squares[move_to_make.start_square as usize],
             self.color_to_move,
         ) {
+            println!("piece on start square is not the color to move");
             return false;
         }
         let start_square = move_to_make.start_square as usize;
@@ -144,8 +157,28 @@ impl Board {
         self.squares[target_square] = piece;
 
         // update color to move
-        self.color_to_move ^= Piece::BLACK;
+        self.swap_turn();
         true
+    }
+    pub fn undo(&mut self, move_to_undo: &Move) {
+        let start_square = move_to_undo.start_square as usize;
+        let target_square = move_to_undo.target_square as usize;
+        let moved_piece = self.squares[target_square];
+        self.squares[start_square] = moved_piece;
+        self.squares[target_square] = match move_to_undo.captured_piece {
+            Some(piece) => piece,
+            None => Piece::NONE,
+        };
+
+        // update color to move
+        self.swap_turn();
+    }
+    pub fn swap_turn(&mut self) {
+        if self.color_to_move == Piece::WHITE {
+            self.color_to_move = Piece::BLACK;
+        } else {
+            self.color_to_move = Piece::WHITE;
+        }
     }
 }
 

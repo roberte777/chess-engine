@@ -12,15 +12,17 @@ pub struct Move {
 
 pub fn generate_legal_moves(board: &mut Board) -> Vec<Move> {
     // TODO: Track this on the board struct instead
-    let king_square = board
-        .squares
-        .iter()
-        .position(|&p| Piece::is_type(p, Piece::KING) && Piece::is_color(p, board.color_to_move))
-        .unwrap();
     let mut legal_moves = Vec::new();
     let pseudo_legal_moves = generate_moves(board);
     for m in pseudo_legal_moves.iter() {
         board.make(m);
+        let king_square = board
+            .squares
+            .iter()
+            .position(|&p| {
+                Piece::is_type(p, Piece::KING) && !Piece::is_color(p, board.color_to_move)
+            })
+            .unwrap();
         let opponent_moves = generate_moves(board);
         if !opponent_moves
             .iter()

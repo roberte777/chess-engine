@@ -12,7 +12,7 @@ pub fn perft(depth: u32, board: &mut Board) -> u64 {
             println!("gotcha outer");
         }
     }
-    println!("depth: {}, moves: {:?}\n", depth, moves);
+    // println!("depth: {}, moves: {:?}\n", depth, moves);
 
     (0..moves.len()).for_each(|i| {
         if Piece::is_type(board.squares[moves[i].start_square as usize], Piece::NONE) {

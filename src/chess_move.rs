@@ -8,6 +8,8 @@ pub struct Move {
     pub start_square: u32,
     pub target_square: u32,
     pub captured_piece: Option<u32>,
+    pub captured_piece_square: Option<usize>,
+    pub is_en_passant: bool,
 }
 
 pub fn generate_legal_moves(board: &mut Board) -> Vec<Move> {
@@ -55,11 +57,6 @@ pub fn generate_moves(board: &Board) -> Vec<Move> {
             }
         }
     }
-    for m in moves.iter_mut() {
-        if Piece::is_type(board.squares[m.start_square as usize], Piece::NONE) {
-            println!("gotcha");
-        }
-    }
     moves
 }
 
@@ -90,6 +87,8 @@ pub fn generate_sliding_piece_moves(
                     start_square: square as u32,
                     target_square: target_square as u32,
                     captured_piece: None,
+                    captured_piece_square: None,
+                    is_en_passant: false,
                 });
             } else if Piece::is_color(target_piece, board.color_to_move) {
                 // blocked by friendly piece
@@ -100,6 +99,8 @@ pub fn generate_sliding_piece_moves(
                     start_square: square as u32,
                     target_square: target_square as u32,
                     captured_piece: Some(target_piece),
+                    captured_piece_square: Some(target_square as usize),
+                    is_en_passant: false,
                 });
                 break;
             }
@@ -123,6 +124,8 @@ pub fn generate_pawn_moves(square: usize, piece: u32, board: &Board, moves: &mut
             start_square: square as u32,
             target_square: target_square as u32,
             captured_piece: None,
+            captured_piece_square: None,
+            is_en_passant: false,
         });
         if square / 8 == start_rank
             && Piece::is_type(
@@ -134,6 +137,8 @@ pub fn generate_pawn_moves(square: usize, piece: u32, board: &Board, moves: &mut
                 start_square: square as u32,
                 target_square: (target_square + 8 * rank_offset) as u32,
                 captured_piece: None,
+                captured_piece_square: None,
+                is_en_passant: false,
             });
         }
     }
@@ -149,6 +154,8 @@ pub fn generate_pawn_moves(square: usize, piece: u32, board: &Board, moves: &mut
             start_square: square as u32,
             target_square: left_target_square as u32,
             captured_piece: Some(board.squares[left_target_square as usize]),
+            captured_piece_square: Some(left_target_square as usize),
+            is_en_passant: false,
         });
     }
     let right_target_square = start_square + 8 * rank_offset + 1;
@@ -163,10 +170,37 @@ pub fn generate_pawn_moves(square: usize, piece: u32, board: &Board, moves: &mut
             start_square: square as u32,
             target_square: right_target_square as u32,
             captured_piece: Some(board.squares[right_target_square as usize]),
+            captured_piece_square: Some(right_target_square as usize),
+            is_en_passant: false,
         });
     }
+
+    // en passant
+    if board.en_passant_square.is_some() {
+        let en_passant_square = board.en_passant_square.unwrap();
+        if en_passant_square as i32 == left_target_square && en_passant_square % 8 == 7 {
+            return;
+        }
+        if en_passant_square as i32 == right_target_square && en_passant_square % 8 == 0 {
+            return;
+        }
+        if en_passant_square as i32 == left_target_square
+            || en_passant_square as i32 == right_target_square
+        {
+            moves.push(Move {
+                start_square: square as u32,
+                target_square: en_passant_square as u32,
+                captured_piece: Some(
+                    // set the captured piece to the pawn that was captured
+                    board.squares[(en_passant_square as i32 - 8 * rank_offset) as usize],
+                ),
+                captured_piece_square: Some((en_passant_square as i32 - 8 * rank_offset) as usize),
+                is_en_passant: true,
+            });
+        }
+    }
 }
-pub fn generate_king_moves(square: usize, piece: u32, board: &Board, moves: &mut Vec<Move>) {
+pub fn generate_king_moves(square: usize, _piece: u32, board: &Board, moves: &mut Vec<Move>) {
     let start_dir_index = 0;
     let end_dir_index = 8;
     (start_dir_index..end_dir_index).for_each(|direction| {
@@ -185,6 +219,8 @@ pub fn generate_king_moves(square: usize, piece: u32, board: &Board, moves: &mut
                 start_square: square as u32,
                 target_square: target_square as u32,
                 captured_piece: None,
+                captured_piece_square: None,
+                is_en_passant: false,
             });
         } else if Piece::is_color(target_piece, board.color_to_move) {
             // blocked by friendly piece
@@ -195,13 +231,15 @@ pub fn generate_king_moves(square: usize, piece: u32, board: &Board, moves: &mut
                 start_square: square as u32,
                 target_square: target_square as u32,
                 captured_piece: Some(target_piece),
+                captured_piece_square: Some(target_square as usize),
+                is_en_passant: false,
             });
             return;
         }
     });
 }
 
-pub fn generate_knight_moves(square: usize, piece: u32, board: &Board, moves: &mut Vec<Move>) {
+pub fn generate_knight_moves(square: usize, _piece: u32, board: &Board, moves: &mut Vec<Move>) {
     let start_dir_index = 8;
     let end_dir_index = 16;
     (start_dir_index..end_dir_index).for_each(|direction| {
@@ -227,6 +265,8 @@ pub fn generate_knight_moves(square: usize, piece: u32, board: &Board, moves: &m
                 start_square: square as u32,
                 target_square: target_square as u32,
                 captured_piece: None,
+                captured_piece_square: None,
+                is_en_passant: false,
             });
         } else if Piece::is_color(target_piece, board.color_to_move) {
             // blocked by friendly piece
@@ -237,6 +277,8 @@ pub fn generate_knight_moves(square: usize, piece: u32, board: &Board, moves: &m
                 start_square: square as u32,
                 target_square: target_square as u32,
                 captured_piece: Some(target_piece),
+                captured_piece_square: Some(target_square as usize),
+                is_en_passant: false,
             });
             return;
         }

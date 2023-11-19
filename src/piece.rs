@@ -21,4 +21,7 @@ impl Piece {
             || Piece::is_type(piece, Piece::ROOK)
             || Piece::is_type(piece, Piece::QUEEN)
     }
+    pub fn get_type(piece: u32) -> u32 {
+        piece & 0b00111
+    }
 }

@@ -2,8 +2,7 @@ use std::fmt::Display;
 
 use crate::{
     chess_move::{
-        generate_king_moves, generate_knight_moves, generate_pawn_moves,
-        generate_sliding_piece_moves, Move,
+        generate_legal_moves, Move,
     },
     piece::Piece,
 };
@@ -221,30 +220,7 @@ impl Board {
     }
 
     pub fn human_move(&mut self, start: usize, end: usize) -> bool {
-        let start_piece = self.squares[start];
-        let piece_type = Piece::get_type(start_piece);
-        let mut moves: Vec<Move> = Vec::new();
-        match piece_type {
-            Piece::PAWN => {
-                generate_pawn_moves(start, start_piece, self, &mut moves);
-            }
-            Piece::KING => {
-                generate_king_moves(start, start_piece, self, &mut moves);
-            }
-            Piece::ROOK => {
-                generate_sliding_piece_moves(start, start_piece, self, &mut moves);
-            }
-            Piece::QUEEN => {
-                generate_sliding_piece_moves(start, start_piece, self, &mut moves);
-            }
-            Piece::BISHOP => {
-                generate_sliding_piece_moves(start, start_piece, self, &mut moves);
-            }
-            Piece::KNIGHT => {
-                generate_knight_moves(start, start_piece, self, &mut moves);
-            }
-            _ => {}
-        }
+        let moves: Vec<Move> = generate_legal_moves(self);
         let move_to_make = moves.iter().find(|chess_move| {
             if chess_move.start_square as usize == start && chess_move.target_square as usize == end
             {

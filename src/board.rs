@@ -486,6 +486,22 @@ pub struct CastleRights {
     pub black_king_side: bool,
     pub black_queen_side: bool,
 }
+impl CastleRights {
+    pub fn new() -> CastleRights {
+        CastleRights {
+            white_king_side: true,
+            white_queen_side: true,
+            black_king_side: true,
+            black_queen_side: true,
+        }
+    }
+}
+
+impl Default for CastleRights {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 fn precomputed_move_data() -> [[usize; 8]; 64] {
     let mut num_squares_to_edge: [[usize; 8]; 64] = [[0; 8]; 64];

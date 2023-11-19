@@ -1,4 +1,5 @@
 use crate::{
+    attack::generate_attack_board_for_color,
     board::{Board, CastleRights, DIRECTION_OFFSETS, NUM_SQUARES_TO_EDGE},
     piece::Piece,
 };
@@ -14,13 +15,60 @@ pub struct Move {
     pub is_castle: bool,
     pub prev_castle_rights: CastleRights,
 }
+impl Move {
+    pub fn to_standard_notation(&self) -> String {
+        let start_square = Piece::index_to_standard_notation(self.start_square);
+        let target_square = Piece::index_to_standard_notation(self.target_square);
+        let mut notation = format!("{}{}", start_square, target_square);
+        if let Some(promoted_piece) = self.promoted_piece {
+            notation.push_str(&Piece::get_type(promoted_piece).to_string());
+        }
+        notation
+    }
+    pub fn from_standard_notation(notation: &str) -> Move {
+        let start_square = Piece::standard_notation_to_index(&notation[0..2]);
+        let target_square = Piece::standard_notation_to_index(&notation[2..4]);
+        let promoted_piece = if notation.len() == 5 {
+            let piece_string = notation.chars().nth(4).unwrap().to_string();
+            match {
+                match piece_string.as_str() {
+                    "q" => Some(Piece::QUEEN),
+                    "r" => Some(Piece::ROOK),
+                    "b" => Some(Piece::BISHOP),
+                    "n" => Some(Piece::KNIGHT),
+                    _ => None,
+                }
+            } {
+                Some(piece) => Some(piece),
+                None => {
+                    println!("Invalid promotion piece: {}", piece_string);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        Move {
+            start_square,
+            target_square,
+            captured_piece: None,
+            captured_piece_square: None,
+            promoted_piece,
+            is_en_passant: false,
+            is_castle: false,
+            prev_castle_rights: CastleRights::new(),
+        }
+    }
+}
 
 pub fn generate_legal_moves(board: &mut Board) -> Vec<Move> {
     // TODO: Track this on the board struct instead
     let mut legal_moves = Vec::new();
     let pseudo_legal_moves = generate_moves(board);
     for m in pseudo_legal_moves.iter() {
-        board.make(m);
+        if !board.make(m) {
+            println!("Problem!!!")
+        }
         let king_square = board
             .squares
             .iter()
@@ -40,7 +88,7 @@ pub fn generate_legal_moves(board: &mut Board) -> Vec<Move> {
     legal_moves
 }
 
-pub fn generate_moves(board: &Board) -> Vec<Move> {
+pub fn generate_moves(board: &mut Board) -> Vec<Move> {
     let mut moves = Vec::new();
     for square in 0..64 {
         let piece = board.squares[square];
@@ -209,6 +257,7 @@ pub fn generate_pawn_moves(square: usize, piece: u32, board: &Board, moves: &mut
     }
     let left_target_square = start_square + 8 * rank_offset - 1;
     if left_target_square % 8 != 7
+        && (0..=63).contains(&left_target_square)
         && !(Piece::is_type(board.squares[left_target_square as usize], Piece::NONE))
         && !Piece::is_color(
             board.squares[left_target_square as usize],
@@ -226,6 +275,7 @@ pub fn generate_pawn_moves(square: usize, piece: u32, board: &Board, moves: &mut
     }
     let right_target_square = start_square + 8 * rank_offset + 1;
     if right_target_square % 8 != 0
+        && (0..=63).contains(&right_target_square)
         && !(Piece::is_type(board.squares[right_target_square as usize], Piece::NONE))
         && !Piece::is_color(
             board.squares[right_target_square as usize],
@@ -245,9 +295,11 @@ pub fn generate_pawn_moves(square: usize, piece: u32, board: &Board, moves: &mut
     // en passant
     if board.en_passant_square.is_some() {
         let en_passant_square = board.en_passant_square.unwrap();
+        // make sure we don't flip to the other side of the board
         if en_passant_square as i32 == left_target_square && en_passant_square % 8 == 7 {
             return;
         }
+        // make sure we don't flip to the other side of the board
         if en_passant_square as i32 == right_target_square && en_passant_square % 8 == 0 {
             return;
         }
@@ -268,7 +320,7 @@ pub fn generate_pawn_moves(square: usize, piece: u32, board: &Board, moves: &mut
         }
     }
 }
-pub fn generate_king_moves(square: usize, _piece: u32, board: &Board, moves: &mut Vec<Move>) {
+pub fn generate_king_moves(square: usize, _piece: u32, board: &mut Board, moves: &mut Vec<Move>) {
     let start_dir_index = 0;
     let end_dir_index = 8;
     (start_dir_index..end_dir_index).for_each(|direction| {
@@ -311,40 +363,74 @@ pub fn generate_king_moves(square: usize, _piece: u32, board: &Board, moves: &mu
             return;
         }
     });
-    // TODO: Castling needs to check if the king is in check
-    // or if the king moves through check
-    if board.can_castle_kingside() {
+    // check if king in check
+    let opposing_color = if board.color_to_move == Piece::WHITE {
+        Piece::BLACK
+    } else {
+        Piece::WHITE
+    };
+    let opposing_attack_board = generate_attack_board_for_color(opposing_color, board);
+    let mut in_check = false;
+    if opposing_attack_board[square] == 1 {
+        in_check = true;
+    };
+
+    if !in_check && board.can_castle_kingside() {
         let target_square = square as i32 + 2;
         if board.squares[target_square as usize] == Piece::NONE
             && board.squares[(target_square - 1) as usize] == Piece::NONE
         {
-            moves.push(Move {
-                start_square: square as u32,
-                target_square: target_square as u32,
-                captured_piece: None,
-                captured_piece_square: None,
-                is_en_passant: false,
-                promoted_piece: None,
-                is_castle: true,
-                prev_castle_rights: board.castle_rights,
-            });
+            //check if king will move through check
+            let mut will_move_through_check = false;
+            let mut current_square = square as i32;
+            while current_square <= target_square {
+                if opposing_attack_board[current_square as usize] == 1 {
+                    will_move_through_check = true;
+                    break;
+                }
+                current_square += 1;
+            }
+            if !will_move_through_check {
+                moves.push(Move {
+                    start_square: square as u32,
+                    target_square: target_square as u32,
+                    captured_piece: None,
+                    captured_piece_square: None,
+                    is_en_passant: false,
+                    promoted_piece: None,
+                    is_castle: true,
+                    prev_castle_rights: board.castle_rights,
+                });
+            }
         }
     }
-    if board.can_castle_queenside() {
+    if !in_check && board.can_castle_queenside() {
         let target_square = square as i32 - 2;
         if board.squares[target_square as usize] == Piece::NONE
             && board.squares[(target_square + 1) as usize] == Piece::NONE
+            && board.squares[(target_square - 1) as usize] == Piece::NONE
         {
-            moves.push(Move {
-                start_square: square as u32,
-                target_square: target_square as u32,
-                captured_piece: None,
-                captured_piece_square: None,
-                is_en_passant: false,
-                promoted_piece: None,
-                is_castle: true,
-                prev_castle_rights: board.castle_rights,
-            });
+            let mut will_move_through_check = false;
+            let mut current_square = square as i32;
+            while current_square >= target_square {
+                if opposing_attack_board[current_square as usize] == 1 {
+                    will_move_through_check = true;
+                    break;
+                }
+                current_square -= 1;
+            }
+            if !will_move_through_check {
+                moves.push(Move {
+                    start_square: square as u32,
+                    target_square: target_square as u32,
+                    captured_piece: None,
+                    captured_piece_square: None,
+                    is_en_passant: false,
+                    promoted_piece: None,
+                    is_castle: true,
+                    prev_castle_rights: board.castle_rights,
+                });
+            }
         }
     }
 }
@@ -435,25 +521,24 @@ mod tests {
     fn test_perft_2() {
         let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -";
         let mut board = Board::from_fen(fen).unwrap();
-        // let perft_1 = perft(1, &mut board, true);
-        // assert_eq!(perft_1, 48);
+        let perft_1 = perft(1, &mut board, true);
+        assert_eq!(perft_1, 48);
         let perft_2 = perft(2, &mut board, true);
         assert_eq!(perft_2, 2_039);
-        // let perft_3 = perft(3, &mut board, true);
-        // assert_eq!(perft_3, 97_862);
+        let perft_3 = perft(3, &mut board, true);
+        assert_eq!(perft_3, 97_862);
+        let perft_4 = perft(4, &mut board, true);
+        assert_eq!(perft_4, 4_085_603);
     }
     #[test]
     fn test_perft_5() {
         let fen = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
         let mut board = Board::from_fen(fen).unwrap();
-        println!("{}", board);
-        // let perft_1 = perft(1, &mut board, true);
-        // assert_eq!(perft_1, 44);
-        // let perft_2 = perft(2, &mut board, true);
-        // assert_eq!(perft_2, 1_486);
-        // println!("\n");
+        let perft_1 = perft(1, &mut board, true);
+        assert_eq!(perft_1, 44);
+        let perft_2 = perft(2, &mut board, true);
+        assert_eq!(perft_2, 1_486);
         let perft_3 = perft(3, &mut board, true);
-        println!("{}", board);
         assert_eq!(perft_3, 62_379);
     }
 }

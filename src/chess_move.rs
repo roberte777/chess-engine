@@ -304,5 +304,15 @@ mod tests {
         assert_eq!(perft_4, 197_281);
         let perft_5 = perft(5, &mut board);
         assert_eq!(perft_5, 4_865_609);
+        let perft_6 = perft(6, &mut board);
+        assert_eq!(perft_6, 119_060_324);
+        // let perft_7 = perft(7, &mut board);
+        // assert_eq!(perft_7, 3_195_901_860);
+        // let perft_8 = perft(8, &mut board);
+        // assert_eq!(perft_8, 84_998_978_956);
+        // let perft_9 = perft(9, &mut board);
+        // assert_eq!(perft_9, 2_439_530_234_167);
+        // let perft_10 = perft(10, &mut board);
+        // assert_eq!(perft_10, 69_352_859_712_417);
     }
 }

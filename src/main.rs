@@ -24,6 +24,10 @@ fn main() {
                 board.human_undo();
                 continue;
             }
+            Command::Unknown => {
+                println!("Invalid command");
+                continue;
+            }
         };
         println!("Where move to?");
         let end_piece = ask_for_piece();
@@ -31,6 +35,10 @@ fn main() {
             Command::Piece(piece) => piece,
             Command::Undo => {
                 board.human_undo();
+                continue;
+            }
+            Command::Unknown => {
+                println!("Invalid command");
                 continue;
             }
         };
@@ -44,6 +52,7 @@ fn main() {
 enum Command {
     Piece(usize),
     Undo,
+    Unknown,
 }
 fn ask_for_piece() -> Command {
     let mut piece = String::new();
@@ -55,15 +64,21 @@ fn ask_for_piece() -> Command {
     if piece == "u" {
         return Command::Undo;
     }
-    let string_piece: String = piece.parse().expect("Not a number");
-    let piece = convert_standard_chess_notation_to_index(&string_piece);
-    Command::Piece(piece)
+    let piece = convert_standard_chess_notation_to_index(piece);
+    if piece.is_err() {
+        return Command::Unknown;
+    }
+    Command::Piece(piece.unwrap())
 }
 
-fn convert_standard_chess_notation_to_index(square: &str) -> usize {
+fn convert_standard_chess_notation_to_index(square: &str) -> Result<usize, io::Error> {
     let mut square = square.chars();
-    let file = square.next().unwrap();
-    let rank = square.next().unwrap();
+    let file = square
+        .next()
+        .ok_or(io::Error::new(io::ErrorKind::InvalidInput, "Invalid file"))?;
+    let rank = square
+        .next()
+        .ok_or(io::Error::new(io::ErrorKind::InvalidInput, "Invalid rank"))?;
     let file = match file {
         'a' => 0,
         'b' => 1,
@@ -73,7 +88,7 @@ fn convert_standard_chess_notation_to_index(square: &str) -> usize {
         'f' => 5,
         'g' => 6,
         'h' => 7,
-        _ => panic!("Invalid file"),
+        _ => return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid file")),
     };
     let rank = match rank {
         '1' => 0,
@@ -84,7 +99,7 @@ fn convert_standard_chess_notation_to_index(square: &str) -> usize {
         '6' => 5,
         '7' => 6,
         '8' => 7,
-        _ => panic!("Invalid rank"),
+        _ => return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid rank")),
     };
-    rank * 8 + file
+    Ok(rank * 8 + file)
 }

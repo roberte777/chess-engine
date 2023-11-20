@@ -319,27 +319,11 @@ impl Board {
     pub fn undo(&mut self, move_to_undo: &Move) {
         // update color to move
         self.swap_turn();
-        // self.all_moves.pop();
+        self.all_moves.pop();
         self.castle_rights = move_to_undo.prev_castle_rights;
         let start_square = move_to_undo.start_square as usize;
         let target_square = move_to_undo.target_square as usize;
         let moved_piece = self.squares[target_square];
-
-        // if Piece::is_type(moved_piece, Piece::ROOK) {
-        //     if self.color_to_move == Piece::WHITE {
-        //         if move_to_undo.start_square == 0 {
-        //             self.castle_rights.white_queen_side = true;
-        //         } else if move_to_undo.start_square == 7 {
-        //             self.castle_rights.white_king_side = true;
-        //         }
-        //     }
-        //     //check if black rook is moving
-        //     else if move_to_undo.start_square == 56 {
-        //         self.castle_rights.black_queen_side = true;
-        //     } else if move_to_undo.start_square == 63 {
-        //         self.castle_rights.black_king_side = true;
-        //     }
-        // }
 
         if move_to_undo.is_en_passant {
             // Move the capturing pawn back to its start square
@@ -427,12 +411,13 @@ impl Board {
         }
         self.make(move_to_make.unwrap())
     }
-    pub fn human_undo(&mut self) {
-        let last_move = self.all_moves.pop();
+    pub fn human_undo(&mut self) -> bool {
+        let last_move = self.all_moves.last();
         if last_move.is_none() {
-            return;
+            return false;
         }
-        self.undo(&last_move.unwrap());
+        self.undo(&last_move.unwrap().clone());
+        true
     }
 }
 

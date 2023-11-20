@@ -257,7 +257,10 @@ impl Board {
                 6 => 7,
                 58 => 56,
                 62 => 63,
-                _ => panic!("Invalid castle move"),
+                _ => {
+                    println!("{}", self);
+                    panic!("Invalid castle move");
+                }
             };
             let rook_target_square = match target_square {
                 2 => 3,
@@ -322,21 +325,21 @@ impl Board {
         let target_square = move_to_undo.target_square as usize;
         let moved_piece = self.squares[target_square];
 
-        if Piece::is_type(moved_piece, Piece::ROOK) {
-            if self.color_to_move == Piece::WHITE {
-                if move_to_undo.start_square == 0 {
-                    self.castle_rights.white_queen_side = true;
-                } else if move_to_undo.start_square == 7 {
-                    self.castle_rights.white_king_side = true;
-                }
-            }
-            //check if black rook is moving
-            else if move_to_undo.start_square == 56 {
-                self.castle_rights.black_queen_side = true;
-            } else if move_to_undo.start_square == 63 {
-                self.castle_rights.black_king_side = true;
-            }
-        }
+        // if Piece::is_type(moved_piece, Piece::ROOK) {
+        //     if self.color_to_move == Piece::WHITE {
+        //         if move_to_undo.start_square == 0 {
+        //             self.castle_rights.white_queen_side = true;
+        //         } else if move_to_undo.start_square == 7 {
+        //             self.castle_rights.white_king_side = true;
+        //         }
+        //     }
+        //     //check if black rook is moving
+        //     else if move_to_undo.start_square == 56 {
+        //         self.castle_rights.black_queen_side = true;
+        //     } else if move_to_undo.start_square == 63 {
+        //         self.castle_rights.black_king_side = true;
+        //     }
+        // }
 
         if move_to_undo.is_en_passant {
             // Move the capturing pawn back to its start square

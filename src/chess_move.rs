@@ -521,14 +521,16 @@ mod tests {
     fn test_perft_2() {
         let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -";
         let mut board = Board::from_fen(fen).unwrap();
-        let perft_1 = perft(1, &mut board, true);
-        assert_eq!(perft_1, 48);
-        let perft_2 = perft(2, &mut board, true);
-        assert_eq!(perft_2, 2_039);
-        let perft_3 = perft(3, &mut board, true);
-        assert_eq!(perft_3, 97_862);
-        let perft_4 = perft(4, &mut board, true);
-        assert_eq!(perft_4, 4_085_603);
+        // let perft_1 = perft(1, &mut board, true);
+        // assert_eq!(perft_1, 48);
+        // let perft_2 = perft(2, &mut board, true);
+        // assert_eq!(perft_2, 2_039);
+        // let perft_3 = perft(3, &mut board, true);
+        // assert_eq!(perft_3, 97_862);
+        // let perft_4 = perft(4, &mut board, true);
+        // assert_eq!(perft_4, 4_085_603);
+        let perft_5 = perft(5, &mut board, true);
+        assert_eq!(perft_5, 193_690_690);
     }
     #[test]
     fn test_perft_5() {

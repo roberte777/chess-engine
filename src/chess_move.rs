@@ -66,6 +66,11 @@ pub fn generate_legal_moves(board: &mut Board) -> Vec<Move> {
     let mut legal_moves = Vec::new();
     let pseudo_legal_moves = generate_moves(board);
     for m in pseudo_legal_moves.iter() {
+        // check if piece to move is king
+        let piece = board.squares[m.start_square as usize];
+        if Piece::is_type(piece, Piece::KING) {
+            println!("king move");
+        }
         if !board.make(m) {
             println!("Problem!!!")
         }
@@ -76,13 +81,22 @@ pub fn generate_legal_moves(board: &mut Board) -> Vec<Move> {
                 Piece::is_type(p, Piece::KING) && !Piece::is_color(p, board.color_to_move)
             })
             .unwrap();
-        let opponent_moves = generate_moves(board);
-        if !opponent_moves
-            .iter()
-            .any(|om| om.target_square == king_square as u32)
-        {
+        let color = if board.color_to_move == Piece::WHITE {
+            Piece::BLACK
+        } else {
+            Piece::WHITE
+        };
+        let check = check_in_check(board, king_square, color);
+        if !check {
             legal_moves.push(*m);
         }
+        // let opponent_moves = generate_moves(board);
+        // if !opponent_moves
+        //     .iter()
+        //     .any(|om| om.target_square == king_square as u32)
+        // {
+        //     legal_moves.push(*m);
+        // }
         board.undo(m);
     }
     legal_moves
@@ -109,6 +123,125 @@ pub fn generate_moves(board: &mut Board) -> Vec<Move> {
         }
     }
     moves
+}
+/**
+ * This function is to help decide if a pseudo legal move is legal.
+ * It is used to check relevant squares to decide if a king is in check.
+ */
+fn check_in_check(board: &Board, king_square: usize, king_color: u32) -> bool {
+    let mut in_check = false;
+    let opposing_color = if king_color == Piece::WHITE {
+        Piece::BLACK
+    } else {
+        Piece::WHITE
+    };
+    // check diagonals
+    let start_dir_index = 4;
+    let end_dir_index = 8;
+    (start_dir_index..end_dir_index).for_each(|direction| {
+        for n in 0..NUM_SQUARES_TO_EDGE[king_square][direction] {
+            let target_square = king_square as i32 + DIRECTION_OFFSETS[direction] * (n + 1) as i32;
+            let target_piece = board.squares[target_square as usize];
+            if Piece::is_type(target_piece, Piece::NONE) {
+                continue;
+            } else if Piece::is_color(target_piece, king_color) {
+                break;
+            } else {
+                if Piece::is_type(target_piece, Piece::QUEEN)
+                    || Piece::is_type(target_piece, Piece::BISHOP)
+                {
+                    in_check = true;
+                }
+                break;
+            }
+        }
+    });
+    // check ranks and files
+    let start_dir_index = 0;
+    let end_dir_index = 4;
+    (start_dir_index..end_dir_index).for_each(|direction| {
+        for n in 0..NUM_SQUARES_TO_EDGE[king_square][direction] {
+            let target_square = king_square as i32 + DIRECTION_OFFSETS[direction] * (n + 1) as i32;
+            let target_piece = board.squares[target_square as usize];
+            if Piece::is_type(target_piece, Piece::NONE) {
+                continue;
+            } else if Piece::is_color(target_piece, king_color) {
+                break;
+            } else {
+                if Piece::is_type(target_piece, Piece::QUEEN)
+                    || Piece::is_type(target_piece, Piece::ROOK)
+                {
+                    in_check = true;
+                }
+                break;
+            }
+        }
+    });
+    // check knights
+    let start_dir_index = 8;
+    let end_dir_index = 16;
+    (start_dir_index..end_dir_index).for_each(|direction| {
+        let target_square = king_square as i32 + DIRECTION_OFFSETS[direction];
+        if !(0..=63).contains(&target_square) {
+            return;
+        }
+        // make sure the target does not wrap around the board
+        let start_row = king_square / 8;
+        let start_col = king_square % 8;
+        let target_row = target_square / 8;
+        let target_col = target_square % 8;
+        let row_diff = (start_row as i32 - target_row).abs();
+        let col_diff = (start_col as i32 - target_col).abs();
+
+        if !((row_diff == 2 && col_diff == 1) || (row_diff == 1 && col_diff == 2)) {
+            return;
+        }
+        let target_piece = board.squares[target_square as usize];
+        if Piece::is_type(target_piece, Piece::KNIGHT) && !Piece::is_color(target_piece, king_color)
+        {
+            in_check = true;
+        }
+    });
+    // check pawns
+    let direction = if king_color == Piece::WHITE { 0 } else { 1 };
+    let rank_offset = if direction == 0 { 1 } else { -1 };
+    let start_square = king_square as i32;
+    let left_target_square = start_square + 8 * rank_offset - 1;
+    if left_target_square % 8 != 7
+        && (0..=63).contains(&left_target_square)
+        && !(Piece::is_type(board.squares[left_target_square as usize], Piece::NONE))
+        && Piece::is_type(board.squares[left_target_square as usize], Piece::PAWN)
+        && !Piece::is_color(board.squares[left_target_square as usize], king_color)
+    {
+        in_check = true;
+    }
+    let right_target_square = start_square + 8 * rank_offset + 1;
+    if right_target_square % 8 != 0
+        && (0..=63).contains(&right_target_square)
+        && !(Piece::is_type(board.squares[right_target_square as usize], Piece::NONE))
+        && Piece::is_type(board.squares[right_target_square as usize], Piece::PAWN)
+        && !Piece::is_color(board.squares[right_target_square as usize], king_color)
+    {
+        in_check = true;
+    }
+    // check king
+    let start_dir_index = 0;
+    let end_dir_index = 8;
+    (start_dir_index..end_dir_index).for_each(|direction| {
+        if NUM_SQUARES_TO_EDGE[king_square][direction] == 0 {
+            return;
+        }
+        let target_square = king_square as i32 + DIRECTION_OFFSETS[direction];
+        // make sure piece is in board
+        if !(0..=63).contains(&target_square) {
+            return;
+        }
+        let target_piece = board.squares[target_square as usize];
+        if Piece::is_type(target_piece, Piece::KING) {
+            in_check = true;
+        }
+    });
+    in_check
 }
 
 pub fn generate_sliding_piece_moves(

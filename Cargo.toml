@@ -9,3 +9,6 @@ edition = "2021"
 lazy_static = "1.4.0"
 log = "0.4.20"
 thiserror = "1.0.50"
+
+[profile.release]
+debug = true

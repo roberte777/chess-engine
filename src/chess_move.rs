@@ -68,9 +68,6 @@ pub fn generate_legal_moves(board: &mut Board) -> Vec<Move> {
     for m in pseudo_legal_moves.iter() {
         // check if piece to move is king
         let piece = board.squares[m.start_square as usize];
-        if Piece::is_type(piece, Piece::KING) {
-            println!("king move");
-        }
         if !board.make(m) {
             println!("Problem!!!")
         }

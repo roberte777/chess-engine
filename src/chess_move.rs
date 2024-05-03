@@ -129,7 +129,7 @@ pub fn generate_sliding_piece_moves(
     };
 
     // if we have castling rights, we know this rook hasn't moved before.
-    let first_move: bool = if Piece::is_type(piece, Piece::ROOK) {
+    let _first_move: bool = if Piece::is_type(piece, Piece::ROOK) {
         if (square == 0 || square == 56) && board.can_castle_queenside() {
             true
         } else {
@@ -188,7 +188,7 @@ pub fn generate_pawn_moves(square: usize, piece: u32, board: &Board, moves: &mut
     let promotion_rank = if direction == 0 { 7 } else { 0 };
     let start_square = square as i32;
     let target_square = start_square + 8 * rank_offset;
-    if target_square > 63 || target_square < 0 {
+    if !(0..=63).contains(&target_square) {
         println!("pawn target square out of bounds");
         println!("start square: {}", start_square);
         println!("board:\n{}", board);

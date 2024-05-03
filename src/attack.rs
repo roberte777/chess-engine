@@ -45,7 +45,7 @@ pub fn generate_sliding_attack(square: usize, board: &Board, color: u32) -> [usi
     });
     attack_squares
 }
-pub fn generate_pawn_attack(square: usize, board: &Board, color: u32) -> [usize; 64] {
+pub fn generate_pawn_attack(square: usize, board: &Board, _color: u32) -> [usize; 64] {
     let piece = board.squares[square];
     let mut attack_squares = [0; 64];
     if !Piece::is_type(piece, Piece::PAWN) {
@@ -57,7 +57,7 @@ pub fn generate_pawn_attack(square: usize, board: &Board, color: u32) -> [usize;
     } else {
         1
     };
-    let start_rank = if direction == 0 { 1 } else { 6 };
+    let _start_rank = if direction == 0 { 1 } else { 6 };
     let rank_offset = if direction == 0 { 1 } else { -1 };
     let start_square = square as i32;
     let target_square = start_square + 8 * rank_offset;

@@ -25,7 +25,7 @@ impl Piece {
         piece & 0b00111
     }
     pub fn standard_notation_to_index(square: &str) -> u32 {
-        let file = square.chars().nth(0).unwrap() as u32 - 'a' as u32;
+        let file = square.chars().next().unwrap() as u32 - 'a' as u32;
         let rank = square.chars().nth(1).unwrap() as u32 - '1' as u32;
         rank * 8 + file
     }

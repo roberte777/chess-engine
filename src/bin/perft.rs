@@ -52,5 +52,7 @@ fn main() {
         }
     }
 
+    let start = std::time::Instant::now();
     perft(depth, &mut board, true);
+    println!("Time taken: {:?}", start.elapsed());
 }

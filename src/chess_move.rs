@@ -106,7 +106,6 @@ pub fn generate_moves(board: &mut Board) -> Vec<Move> {
         if Piece::is_color(piece, board.color_to_move) {
             if Piece::is_sliding_piece(piece) {
                 generate_sliding_piece_moves(square, piece, board, &mut moves);
-                // check if any start squares in the moves are None
             }
             if Piece::is_type(piece, Piece::PAWN) {
                 generate_pawn_moves(square, piece, board, &mut moves);

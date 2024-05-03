@@ -87,13 +87,6 @@ pub fn generate_legal_moves(board: &mut Board) -> Vec<Move> {
         if !check {
             legal_moves.push(*m);
         }
-        // let opponent_moves = generate_moves(board);
-        // if !opponent_moves
-        //     .iter()
-        //     .any(|om| om.target_square == king_square as u32)
-        // {
-        //     legal_moves.push(*m);
-        // }
         board.undo(m);
     }
     legal_moves
@@ -635,10 +628,10 @@ mod tests {
         assert_eq!(perft_4, 197_281);
         let perft_5 = perft(5, &mut board, true);
         assert_eq!(perft_5, 4_865_609);
-        // let perft_6 = perft(6, &mut board);
-        // assert_eq!(perft_6, 119_060_324);
-        // let perft_7 = perft(7, &mut board);
-        // assert_eq!(perft_7, 3_195_901_860);
+        let perft_6 = perft(6, &mut board, true);
+        assert_eq!(perft_6, 119_060_324);
+        let perft_7 = perft(7, &mut board, true);
+        assert_eq!(perft_7, 3_195_901_860);
         // let perft_8 = perft(8, &mut board);
         // assert_eq!(perft_8, 84_998_978_956);
         // let perft_9 = perft(9, &mut board);

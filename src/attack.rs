@@ -171,7 +171,7 @@ pub fn generate_attack_board_for_color(color: u32, board: &Board) -> [usize; 64]
     (0..64).for_each(|square| {
         let piece = board.squares[square];
         if Piece::is_color(piece, color) {
-            let mut attack_squares = [0; 64];
+            let attack_squares;
             if Piece::is_type(piece, Piece::PAWN) {
                 attack_squares = generate_pawn_attack(square, board, color);
             } else if Piece::is_type(piece, Piece::KNIGHT) {

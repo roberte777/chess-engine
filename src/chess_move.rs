@@ -611,13 +611,13 @@ pub fn generate_knight_moves(square: usize, _piece: u32, board: &Board, moves: &
 
 #[cfg(test)]
 mod tests {
-    use crate::board::STATING_FEN;
+    use crate::board::STARTING_FEN;
     use crate::perft::perft;
 
     use super::*;
     #[test]
     fn test_stock_perft() {
-        let mut board = Board::from_fen(STATING_FEN).unwrap();
+        let mut board = Board::from_fen(STARTING_FEN).unwrap();
         let perft_1 = perft(1, &mut board, true);
         assert_eq!(perft_1, 20);
         let perft_2 = perft(2, &mut board, true);

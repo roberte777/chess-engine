@@ -5,7 +5,7 @@ use crate::{
     chess_move::{generate_legal_moves, Move},
     piece::Piece,
 };
-pub const STATING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+pub const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 // first 8 are offsets for north, south, west, east, north-west, south-east, north-east, south-west
 // second 8 are offsets for knight moves
 pub const DIRECTION_OFFSETS: [i32; 16] =
@@ -419,6 +419,13 @@ impl Board {
         self.undo(&last_move.unwrap().clone());
         true
     }
+
+    pub fn piece_at(&self, index: usize) -> Option<u32> {
+        if index > 63 {
+            return None;
+        }
+        Some(self.squares[index])
+    }
 }
 
 impl Default for Board {
@@ -521,7 +528,7 @@ mod tests {
     use super::*;
     #[test]
     fn test_board_from_fen() {
-        let board = Board::from_fen(STATING_FEN).expect("Invalid FEN");
+        let board = Board::from_fen(STARTING_FEN).expect("Invalid FEN");
         let squares = [
             Piece::ROOK | Piece::WHITE,
             Piece::KNIGHT | Piece::WHITE,

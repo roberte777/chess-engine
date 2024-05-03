@@ -24,6 +24,9 @@ impl Piece {
     pub fn get_type(piece: u32) -> u32 {
         piece & 0b00111
     }
+    pub fn get_color(piece: u32) -> u32 {
+        piece & (Self::WHITE | Self::BLACK)
+    }
     pub fn standard_notation_to_index(square: &str) -> u32 {
         let file = square.chars().next().unwrap() as u32 - 'a' as u32;
         let rank = square.chars().nth(1).unwrap() as u32 - '1' as u32;

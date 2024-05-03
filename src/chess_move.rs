@@ -67,7 +67,7 @@ pub fn generate_legal_moves(board: &mut Board) -> Vec<Move> {
     let pseudo_legal_moves = generate_moves(board);
     for m in pseudo_legal_moves.iter() {
         // check if piece to move is king
-        let piece = board.squares[m.start_square as usize];
+        let _piece = board.squares[m.start_square as usize];
         if !board.make(m) {
             println!("Problem!!!")
         }
@@ -127,7 +127,7 @@ pub fn generate_moves(board: &mut Board) -> Vec<Move> {
  */
 fn check_in_check(board: &Board, king_square: usize, king_color: u32) -> bool {
     let mut in_check = false;
-    let opposing_color = if king_color == Piece::WHITE {
+    let _opposing_color = if king_color == Piece::WHITE {
         Piece::BLACK
     } else {
         Piece::WHITE

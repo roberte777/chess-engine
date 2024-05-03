@@ -1,6 +1,6 @@
 use chess_engine::board::Board;
 use chess_engine::perft::perft;
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("perft 5 5", |b| {

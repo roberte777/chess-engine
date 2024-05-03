@@ -3,7 +3,7 @@ use std::io;
 use chess_engine::{
     board::{Board, STARTING_FEN},
     piece::Piece,
-    score::minimax,
+    score::{minimax, minimax_ab},
 };
 
 fn main() {
@@ -18,7 +18,8 @@ fn main() {
         println!("{}", board);
         // engine to move
         if board.color_to_move == Piece::BLACK {
-            let (score, mv) = minimax(&mut board, 4);
+            let (score, mv) = minimax_ab(&mut board, 6, i32::MIN, i32::MAX);
+            // let (score, mv) = minimax(&mut board, 4);
             println!("Score: {}", score);
             if let Some(mv) = mv {
                 board.make(&mv);

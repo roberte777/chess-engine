@@ -3,12 +3,12 @@ use std::io::{self, BufRead, Write};
 use chess_engine::{
     board::{Board, STARTING_FEN},
     chess_move::Move,
-    score::minimax,
+    score::{minimax, minimax_ab},
 };
 
 fn main() {
     let stdin = io::stdin();
-    let mut input = stdin.lock();
+    let input = stdin.lock();
     let mut output = io::stdout();
 
     let mut board = Board::from_fen(STARTING_FEN).unwrap();
@@ -51,7 +51,7 @@ fn handle_position(board: &mut Board, line: &str) {
 }
 
 fn handle_go(board: &mut Board, output: &mut impl Write) {
-    let (_, mv) = minimax(board, 4);
+    let (_, mv) = minimax_ab(board, 6, i32::MIN, i32::MAX);
     if let Some(mv) = mv {
         writeln!(output, "bestmove {}", mv.to_standard_notation()).expect("Error writing output");
     } else {

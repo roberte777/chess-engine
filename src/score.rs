@@ -102,6 +102,42 @@ pub fn minimax(board: &mut Board, depth: u32) -> (i32, Option<Move>) {
     (best_score, best_move)
 }
 
+pub fn minimax_ab(
+    board: &mut Board,
+    depth: u32,
+    mut alpha: i32,
+    mut beta: i32,
+) -> (i32, Option<Move>) {
+    let maximizing = board.color_to_move == Piece::WHITE;
+    if depth == 0 {
+        return (score(board), None); // No move to return when depth is 0
+    }
+    let mut best_move = None;
+    let mut best_score = if maximizing { i32::MIN } else { i32::MAX };
+
+    for mv in generate_legal_moves(board) {
+        board.make(&mv);
+        let (score, _) = minimax_ab(board, depth - 1, alpha, beta);
+        board.undo(&mv);
+        if maximizing {
+            if score > best_score {
+                best_score = score;
+                best_move = Some(mv);
+            }
+            alpha = std::cmp::max(alpha, best_score);
+        } else {
+            if score < best_score {
+                best_score = score;
+                best_move = Some(mv);
+            }
+            beta = std::cmp::min(beta, best_score);
+        }
+        if alpha >= beta {
+            break;
+        }
+    }
+    (best_score, best_move)
+}
 const PAWN_PIECE_TABLE: [i32; 64] = [
     0, 0, 0, 0, 0, 0, 0, 0, 50, 50, 50, 50, 50, 50, 50, 50, 10, 10, 20, 30, 30, 20, 10, 10, 5, 5,
     10, 25, 25, 10, 5, 5, 0, 0, 0, 20, 20, 0, 0, 0, 5, -5, -10, 0, 0, -10, -5, 5, 5, 10, 10, -20,

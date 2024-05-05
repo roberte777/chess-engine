@@ -2,7 +2,7 @@ use std::fmt::Display;
 use thiserror::Error;
 
 use crate::{
-    chess_move::{generate_legal_moves, Move},
+    chess_move::{check_in_check, generate_legal_moves, Move},
     piece::Piece,
 };
 pub const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -39,6 +39,8 @@ pub struct Board {
     pub en_pasasnt_stack: Vec<Option<usize>>,
     pub all_moves: Vec<Move>,
     pub castle_rights: CastleRights,
+    position_stack: Vec<[u32; 64]>,
+    half_move_stack: Vec<u32>,
 }
 impl Board {
     pub fn new() -> Board {
@@ -54,6 +56,8 @@ impl Board {
                 black_king_side: true,
                 black_queen_side: true,
             },
+            position_stack: Vec::new(),
+            half_move_stack: Vec::new(),
         }
     }
 
@@ -313,6 +317,15 @@ impl Board {
         }
         // update color to move
         self.all_moves.push(*move_to_make);
+        self.position_stack.push(self.squares);
+        // if pawn move or capture, reset half move clock
+        // otherwise, increment half move clock
+        if Piece::is_type(piece, Piece::PAWN) || move_to_make.captured_piece.is_some() {
+            self.half_move_stack.push(0);
+        } else {
+            self.half_move_stack
+                .push(self.half_move_stack.last().unwrap() + 1);
+        }
         self.swap_turn();
         true
     }
@@ -372,6 +385,8 @@ impl Board {
             }
         }
         self.en_pasasnt_stack.pop();
+        self.position_stack.pop();
+        self.half_move_stack.pop();
         self.en_passant_square = *self.en_pasasnt_stack.last().unwrap();
     }
 
@@ -426,6 +441,100 @@ impl Board {
         }
         Some(self.squares[index])
     }
+    fn is_check(&mut self) -> bool {
+        let king_square = self.squares.iter().position(|&square| {
+            Piece::is_type(square, Piece::KING) && Piece::is_color(square, self.color_to_move)
+        });
+        if king_square.is_none() {
+            return false;
+        }
+        let king_square = king_square.unwrap();
+        check_in_check(self, king_square, self.color_to_move)
+    }
+    fn is_insufficient_material(&self) -> bool {
+        let mut knight_count = [0, 0];
+        let mut bishop_count = [0, 0];
+        let mut bishop_squares = [0, 0]; // Count of bishops on white and black squares
+
+        for &piece in &self.squares {
+            let color = Piece::get_color(piece);
+            let color_index = if color == Piece::WHITE { 0 } else { 1 };
+
+            match Piece::get_type(piece) {
+                Piece::KING => {}
+                Piece::KNIGHT => knight_count[color_index] += 1,
+                Piece::BISHOP => {
+                    bishop_count[color_index] += 1;
+                    let index = self.squares.iter().position(|&x| x == piece).unwrap();
+                    if (index % 8 + index / 8 % 2) % 2 == 0 {
+                        bishop_squares[0] += 1; // Increment for white square bishops
+                    } else {
+                        bishop_squares[1] += 1; // Increment for black square bishops
+                    }
+                }
+                _ => {
+                    if piece != Piece::NONE {
+                        return false;
+                    }
+                } // Other pieces mean sufficient material
+            }
+        }
+
+        for i in 0..2 {
+            if knight_count[i] > 1 || bishop_count[i] > 1 {
+                return false; // More than one knight or bishop per side
+            }
+            if knight_count[i] == 1 && bishop_count[i] == 1 {
+                return false; // Knight + Bishop per side
+            }
+        }
+
+        true // True if none of the conditions for sufficient material are met
+    }
+
+    fn is_50_move_rule(&self) -> bool {
+        if self.half_move_stack.is_empty() {
+            return false;
+        }
+        *self.half_move_stack.last().unwrap() >= 100
+    }
+
+    fn is_threefold_repetition(&self) -> bool {
+        if self.position_stack.len() < 8 {
+            return false;
+        }
+        let mut count = 0;
+        for i in 0..self.position_stack.len() - 1 {
+            if self.position_stack[i] == self.position_stack[self.position_stack.len() - 1] {
+                count += 1;
+            }
+        }
+        count >= 2
+    }
+
+    pub fn game_state(&mut self) -> GameResult {
+        let moves = generate_legal_moves(self);
+        if moves.is_empty() {
+            if self.is_check() {
+                return GameResult::Checkmate;
+            }
+            return GameResult::Stalemate;
+        }
+        if self.is_insufficient_material()
+            || self.is_50_move_rule()
+            || self.is_threefold_repetition()
+        {
+            return GameResult::Draw;
+        }
+        GameResult::InProgress
+    }
+}
+
+enum GameResult {
+    Checkmate,
+    Stalemate,
+    Draw,
+    InProgress,
 }
 
 impl Default for Board {

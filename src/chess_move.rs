@@ -83,6 +83,7 @@ pub fn generate_legal_moves(board: &mut Board) -> Vec<Move> {
         } else {
             Piece::WHITE
         };
+        // FIXME move this check to the board struct
         let check = check_in_check(board, king_square, color);
         if !check {
             legal_moves.push(*m);
@@ -117,7 +118,7 @@ pub fn generate_moves(board: &mut Board) -> Vec<Move> {
  * This function is to help decide if a pseudo legal move is legal.
  * It is used to check relevant squares to decide if a king is in check.
  */
-fn check_in_check(board: &Board, king_square: usize, king_color: u32) -> bool {
+pub fn check_in_check(board: &Board, king_square: usize, king_color: u32) -> bool {
     let mut in_check = false;
     let _opposing_color = if king_color == Piece::WHITE {
         Piece::BLACK

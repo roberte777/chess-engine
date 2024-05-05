@@ -21,6 +21,8 @@ fn main() {
             handle_position(&mut board, &line);
         } else if line.starts_with("go") {
             handle_go(&mut board, &mut output);
+        } else if line == "isready" {
+            handle_isready(&mut output)
         } else if line == "quit" {
             break;
         }
@@ -57,6 +59,10 @@ fn handle_go(board: &mut Board, output: &mut impl Write) {
     } else {
         writeln!(output, "bestmove none").expect("Error writing output");
     }
+}
+
+fn handle_isready(output: &mut impl Write) {
+    writeln!(output, "readyok").expect("Error writing output");
 }
 
 fn parse_move(move_notation: &str) -> Move {

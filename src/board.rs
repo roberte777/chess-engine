@@ -324,7 +324,7 @@ impl Board {
             self.half_move_stack.push(0);
         } else {
             self.half_move_stack
-                .push(self.half_move_stack.last().unwrap() + 1);
+                .push(self.half_move_stack.last().unwrap_or(&0) + 1);
         }
         self.swap_turn();
         true
@@ -441,7 +441,7 @@ impl Board {
         }
         Some(self.squares[index])
     }
-    fn is_check(&mut self) -> bool {
+    pub fn is_check(&mut self) -> bool {
         let king_square = self.squares.iter().position(|&square| {
             Piece::is_type(square, Piece::KING) && Piece::is_color(square, self.color_to_move)
         });
@@ -512,6 +512,10 @@ impl Board {
         count >= 2
     }
 
+    pub fn is_draw(&self) -> bool {
+        self.is_insufficient_material() || self.is_50_move_rule() || self.is_threefold_repetition()
+    }
+
     pub fn game_state(&mut self) -> GameResult {
         let moves = generate_legal_moves(self);
         if moves.is_empty() {
@@ -520,10 +524,7 @@ impl Board {
             }
             return GameResult::Stalemate;
         }
-        if self.is_insufficient_material()
-            || self.is_50_move_rule()
-            || self.is_threefold_repetition()
-        {
+        if self.is_draw() {
             return GameResult::Draw;
         }
         GameResult::InProgress

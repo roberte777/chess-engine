@@ -21,6 +21,17 @@ impl Piece {
             || Piece::is_type(piece, Piece::ROOK)
             || Piece::is_type(piece, Piece::QUEEN)
     }
+    pub fn piece_to_char(piece: u32) -> char {
+        match piece {
+            Piece::KING => 'k',
+            Piece::PAWN => 'p',
+            Piece::KNIGHT => 'n',
+            Piece::BISHOP => 'b',
+            Piece::ROOK => 'r',
+            Piece::QUEEN => 'q',
+            _ => '.',
+        }
+    }
     pub fn get_type(piece: u32) -> u32 {
         piece & 0b00111
     }

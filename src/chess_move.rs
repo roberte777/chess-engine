@@ -21,7 +21,7 @@ impl Move {
         let target_square = Piece::index_to_standard_notation(self.target_square);
         let mut notation = format!("{}{}", start_square, target_square);
         if let Some(promoted_piece) = self.promoted_piece {
-            notation.push_str(&Piece::get_type(promoted_piece).to_string());
+            notation.push_str(&Piece::piece_to_char(promoted_piece).to_string());
         }
         notation
     }
@@ -48,14 +48,22 @@ impl Move {
         } else {
             None
         };
+        // check if castle
+        let is_castle = start_square == 4 && target_square == 6
+            || start_square == 4 && target_square == 2
+            || start_square == 60 && target_square == 62
+            || start_square == 60 && target_square == 58;
+        // check if en passant
+        let is_en_passant =
+            (start_square % 8 != target_square % 8) && notation.chars().nth(2).unwrap() == 'x';
         Move {
             start_square,
             target_square,
             captured_piece: None,
             captured_piece_square: None,
             promoted_piece,
-            is_en_passant: false,
-            is_castle: false,
+            is_en_passant,
+            is_castle,
             prev_castle_rights: CastleRights::new(),
         }
     }
@@ -665,5 +673,15 @@ mod tests {
         assert_eq!(perft_2, 1_486);
         let perft_3 = perft(3, &mut board, true);
         assert_eq!(perft_3, 62_379);
+    }
+
+    #[test]
+    fn test_std_notation() {
+        let fen = "rn2kbnr/ppp1pppp/8/4Nq2/5P2/8/PPp1Q1PP/RNB1K2R b KQkq - 1 8";
+        let mut board = Board::from_fen(fen).unwrap();
+        let chess_move = Move::from_standard_notation("c2b1");
+        assert_eq!(chess_move.start_square, 10);
+        assert_eq!(chess_move.target_square, 1);
+        assert_eq!(chess_move.to_standard_notation(), "c2b1");
     }
 }

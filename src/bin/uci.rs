@@ -15,6 +15,7 @@ fn main() {
 
     for line in input.lines() {
         let line = line.expect("Could not read line from standard input");
+        // println!("{}", line);
         if line == "uci" {
             handle_uci(&mut output);
         } else if line.starts_with("position") {
@@ -55,6 +56,7 @@ fn handle_position(board: &mut Board, line: &str) {
 fn handle_go(board: &mut Board, output: &mut impl Write) {
     let (_, mv) = minimax_ab(board, 6, i32::MIN, i32::MAX);
     if let Some(mv) = mv {
+        // println!("{}", board);
         writeln!(output, "bestmove {}", mv.to_standard_notation()).expect("Error writing output");
     } else {
         writeln!(output, "bestmove none").expect("Error writing output");

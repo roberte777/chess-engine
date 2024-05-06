@@ -3,10 +3,11 @@ use std::io;
 use chess_engine::{board::Board, piece::Piece};
 
 fn main() {
-    let _pos5 = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
+    // let _pos5 = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
     // let test = "8/2p5/3p4/KP5r/1R3p1k/4P3/6P1/8 b - - 1 8";
     // let pos2 = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -";
-    let mut board = Board::from_fen(_pos5).unwrap();
+    let pos = "rn1qkb1r/pp2pppp/2p5/8/2pP4/4P3/PPP2PPP/RNBQK2R w KQkq - 0 9";
+    let mut board = Board::from_fen(pos).unwrap();
     loop {
         let turn = if board.color_to_move == Piece::WHITE {
             "White"

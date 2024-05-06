@@ -91,6 +91,10 @@ pub fn minimax(board: &mut Board, depth: u32) -> (i32, Option<Move>) {
     let mut best_move = None;
     let mut best_score = if maximizing { i32::MIN } else { i32::MAX };
     for mv in generate_legal_moves(board) {
+        if Piece::get_color(mv.start_square) != board.color_to_move {
+            println!("Invalid move: {:?}", mv);
+            continue;
+        }
         board.make(&mv);
         let (score, _) = minimax(board, depth - 1);
         board.undo(&mv);
@@ -115,7 +119,23 @@ pub fn minimax_ab(
     let mut best_move = None;
     let mut best_score = if maximizing { i32::MIN } else { i32::MAX };
 
-    for mv in generate_legal_moves(board) {
+    let mut moves = generate_legal_moves(board);
+    if moves.is_empty() {
+        if board.is_check() {
+            return (if maximizing { i32::MIN } else { i32::MAX }, None);
+        }
+        return (0, None);
+    }
+    if board.is_draw() {
+        return (0, None);
+    }
+    order_moves(&mut moves);
+
+    if best_move.is_none() {
+        best_move = Some(moves[0]);
+    }
+
+    for mv in moves {
         board.make(&mv);
         let (score, _) = minimax_ab(board, depth - 1, alpha, beta);
         board.undo(&mv);
@@ -174,3 +194,12 @@ const KING_PIECE_TABLE: [i32; 64] = [
     -30, -20, -10, -20, -20, -20, -20, -20, -20, -10, 20, 20, 0, 0, 0, 0, 20, 20, 20, 30, 10, 0, 0,
     10, 30, 20,
 ];
+
+fn order_moves(moves: &mut Vec<Move>) {
+    moves.sort_by(|a, b| {
+        // Order captures first
+        let a_captures = a.captured_piece.is_some();
+        let b_captures = b.captured_piece.is_some();
+        b_captures.cmp(&a_captures)
+    });
+}

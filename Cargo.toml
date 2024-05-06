@@ -15,5 +15,5 @@ thiserror = "1.0.50"
 debug = true
 
 [[bench]]
-name = "my_benchmark"
+name = "minimax"
 harness = false

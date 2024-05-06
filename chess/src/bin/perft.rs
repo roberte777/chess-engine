@@ -1,4 +1,4 @@
-use chess_engine::{board::Board, chess_move::Move, perft::perft};
+use chess::{board::Board, chess_move::Move, perft::perft};
 use std::env;
 
 fn main() {

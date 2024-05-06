@@ -33,12 +33,12 @@ pub enum FenParseError {
 
 #[derive(Debug)]
 pub struct Board {
-    pub squares: [u32; 64],
-    pub color_to_move: u32,
-    pub en_passant_square: Option<usize>,
-    pub en_pasasnt_stack: Vec<Option<usize>>,
-    pub all_moves: Vec<Move>,
-    pub castle_rights: CastleRights,
+    squares: [u32; 64],
+    color_to_move: u32,
+    en_passant_square: Option<usize>,
+    en_pasasnt_stack: Vec<Option<usize>>,
+    all_moves: Vec<Move>,
+    castle_rights: CastleRights,
     position_stack: Vec<[u32; 64]>,
     half_move_stack: Vec<u32>,
 }
@@ -189,26 +189,6 @@ impl Board {
         ) {
             println!("Illegal move: piece on start square is not the color to move");
             println!("{}", self);
-            for i in 0..self.all_moves.len() {
-                let promotion_piece = self.all_moves[i].promoted_piece;
-                let promotion_print = match promotion_piece {
-                    Some(piece) => match piece {
-                        Piece::QUEEN => "q",
-                        Piece::ROOK => "r",
-                        Piece::BISHOP => "b",
-                        Piece::KNIGHT => "n",
-                        _ => "",
-                    },
-                    None => "",
-                };
-                println!(
-                    "{}{}{}",
-                    Piece::index_to_standard_notation(self.all_moves[i].start_square),
-                    Piece::index_to_standard_notation(self.all_moves[i].target_square),
-                    promotion_print
-                );
-                panic!("Illegal move");
-            }
             return false;
         }
         let start_square = move_to_make.start_square as usize;
@@ -390,7 +370,7 @@ impl Board {
         self.en_passant_square = *self.en_pasasnt_stack.last().unwrap();
     }
 
-    pub fn swap_turn(&mut self) {
+    fn swap_turn(&mut self) {
         if self.color_to_move == Piece::WHITE {
             self.color_to_move = Piece::BLACK;
         } else {
@@ -512,10 +492,19 @@ impl Board {
         count >= 2
     }
 
+    /// Returns true if the game is a draw by insufficient material, 50 move rule, or threefold repetition
+    ///
+    /// Note: This method does not generate any moves and is safe to use
+    /// in a chess engine without worrying about performance.
     pub fn is_draw(&self) -> bool {
         self.is_insufficient_material() || self.is_50_move_rule() || self.is_threefold_repetition()
     }
 
+    /// Returns the current state of the game
+    ///
+    /// Note, this method generates all legal moves for the board. If you are using
+    /// this in a chess engine and have already generated legal moves, don't call
+    /// this function as it will be duplicate work and slow down your engine.
     pub fn game_state(&mut self) -> GameResult {
         let moves = generate_legal_moves(self);
         if moves.is_empty() {
@@ -529,9 +518,25 @@ impl Board {
         }
         GameResult::InProgress
     }
+
+    pub fn castle_rights(&self) -> CastleRights {
+        self.castle_rights
+    }
+
+    pub fn color_to_move(&self) -> u32 {
+        self.color_to_move
+    }
+
+    pub fn squares(&self) -> &[u32; 64] {
+        &self.squares
+    }
+
+    pub fn en_passant_square(&self) -> Option<usize> {
+        self.en_passant_square
+    }
 }
 
-enum GameResult {
+pub enum GameResult {
     Checkmate,
     Stalemate,
     Draw,

@@ -1,6 +1,6 @@
 use chess::board::{Board, STARTING_FEN};
 use chess::perft::perft;
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 
 pub fn perft_initial(c: &mut Criterion) {
     let mut group = c.benchmark_group("perft_initial");
@@ -34,6 +34,7 @@ pub fn perft_initial(c: &mut Criterion) {
 
 pub fn perft_2(c: &mut Criterion) {
     let mut group = c.benchmark_group("perft_2");
+    group.sample_size(10);
     let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -";
 
     let expected_results = [
@@ -60,6 +61,7 @@ pub fn perft_2(c: &mut Criterion) {
 
 pub fn perft_3(c: &mut Criterion) {
     let mut group = c.benchmark_group("perft_3");
+    group.sample_size(10);
     let fen = "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - -";
 
     let expected_results = [
@@ -85,5 +87,37 @@ pub fn perft_3(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, perft_initial, perft_2, perft_3);
+pub fn perft_initial_grouped(c: &mut Criterion) {
+    let mut group = c.benchmark_group("perft_initial_grouped");
+    group.sample_size(10);
+
+    let expected_results = [
+        (1, 20),
+        (2, 400),
+        (3, 8_902),
+        (4, 197_281),
+        (5, 4_865_609),
+        (6, 119_060_324),
+    ];
+
+    for &(depth, expected_nodes) in &expected_results {
+        group.bench_with_input(BenchmarkId::new("Depth", depth), &depth, |b, &depth| {
+            b.iter(|| {
+                let mut board = Board::from_fen(STARTING_FEN).unwrap();
+                let nodes = perft(depth, &mut board, false);
+                assert_eq!(nodes, expected_nodes);
+            });
+        });
+    }
+
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    perft_initial,
+    perft_initial_grouped,
+    perft_2,
+    perft_3
+);
 criterion_main!(benches);

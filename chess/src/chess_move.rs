@@ -75,18 +75,17 @@ pub fn generate_legal_moves(board: &mut Board) -> Vec<Move> {
     let pseudo_legal_moves = generate_moves(board);
     for m in pseudo_legal_moves.iter() {
         // check if piece to move is king
-        let _piece = board.squares[m.start_square as usize];
         if !board.make(m) {
             println!("Problem!!!")
         }
         let king_square = board
-            .squares
+            .squares()
             .iter()
             .position(|&p| {
-                Piece::is_type(p, Piece::KING) && !Piece::is_color(p, board.color_to_move)
+                Piece::is_type(p, Piece::KING) && !Piece::is_color(p, board.color_to_move())
             })
             .unwrap();
-        let color = if board.color_to_move == Piece::WHITE {
+        let color = if board.color_to_move() == Piece::WHITE {
             Piece::BLACK
         } else {
             Piece::WHITE
@@ -104,8 +103,8 @@ pub fn generate_legal_moves(board: &mut Board) -> Vec<Move> {
 pub fn generate_moves(board: &mut Board) -> Vec<Move> {
     let mut moves = Vec::new();
     for square in 0..64 {
-        let piece = board.squares[square];
-        if Piece::is_color(piece, board.color_to_move) {
+        let piece = board.piece_at(square).unwrap();
+        if Piece::is_color(piece, board.color_to_move()) {
             if Piece::is_sliding_piece(piece) {
                 generate_sliding_piece_moves(square, piece, board, &mut moves);
             }
@@ -139,7 +138,7 @@ pub fn check_in_check(board: &Board, king_square: usize, king_color: u32) -> boo
     (start_dir_index..end_dir_index).for_each(|direction| {
         for n in 0..NUM_SQUARES_TO_EDGE[king_square][direction] {
             let target_square = king_square as i32 + DIRECTION_OFFSETS[direction] * (n + 1) as i32;
-            let target_piece = board.squares[target_square as usize];
+            let target_piece = board.piece_at(target_square as usize).unwrap();
             if Piece::is_type(target_piece, Piece::NONE) {
                 continue;
             } else if Piece::is_color(target_piece, king_color) {
@@ -160,7 +159,7 @@ pub fn check_in_check(board: &Board, king_square: usize, king_color: u32) -> boo
     (start_dir_index..end_dir_index).for_each(|direction| {
         for n in 0..NUM_SQUARES_TO_EDGE[king_square][direction] {
             let target_square = king_square as i32 + DIRECTION_OFFSETS[direction] * (n + 1) as i32;
-            let target_piece = board.squares[target_square as usize];
+            let target_piece = board.piece_at(target_square as usize).unwrap();
             if Piece::is_type(target_piece, Piece::NONE) {
                 continue;
             } else if Piece::is_color(target_piece, king_color) {
@@ -194,7 +193,7 @@ pub fn check_in_check(board: &Board, king_square: usize, king_color: u32) -> boo
         if !((row_diff == 2 && col_diff == 1) || (row_diff == 1 && col_diff == 2)) {
             return;
         }
-        let target_piece = board.squares[target_square as usize];
+        let target_piece = board.piece_at(target_square as usize).unwrap();
         if Piece::is_type(target_piece, Piece::KNIGHT) && !Piece::is_color(target_piece, king_color)
         {
             in_check = true;
@@ -207,18 +206,36 @@ pub fn check_in_check(board: &Board, king_square: usize, king_color: u32) -> boo
     let left_target_square = start_square + 8 * rank_offset - 1;
     if left_target_square % 8 != 7
         && (0..=63).contains(&left_target_square)
-        && !(Piece::is_type(board.squares[left_target_square as usize], Piece::NONE))
-        && Piece::is_type(board.squares[left_target_square as usize], Piece::PAWN)
-        && !Piece::is_color(board.squares[left_target_square as usize], king_color)
+        && !(Piece::is_type(
+            board.piece_at(left_target_square as usize).unwrap(),
+            Piece::NONE,
+        ))
+        && Piece::is_type(
+            board.piece_at(left_target_square as usize).unwrap(),
+            Piece::PAWN,
+        )
+        && !Piece::is_color(
+            board.piece_at(left_target_square as usize).unwrap(),
+            king_color,
+        )
     {
         in_check = true;
     }
     let right_target_square = start_square + 8 * rank_offset + 1;
     if right_target_square % 8 != 0
         && (0..=63).contains(&right_target_square)
-        && !(Piece::is_type(board.squares[right_target_square as usize], Piece::NONE))
-        && Piece::is_type(board.squares[right_target_square as usize], Piece::PAWN)
-        && !Piece::is_color(board.squares[right_target_square as usize], king_color)
+        && !(Piece::is_type(
+            board.piece_at(right_target_square as usize).unwrap(),
+            Piece::NONE,
+        ))
+        && Piece::is_type(
+            board.piece_at(right_target_square as usize).unwrap(),
+            Piece::PAWN,
+        )
+        && !Piece::is_color(
+            board.piece_at(right_target_square as usize).unwrap(),
+            king_color,
+        )
     {
         in_check = true;
     }
@@ -234,7 +251,7 @@ pub fn check_in_check(board: &Board, king_square: usize, king_color: u32) -> boo
         if !(0..=63).contains(&target_square) {
             return;
         }
-        let target_piece = board.squares[target_square as usize];
+        let target_piece = board.piece_at(target_square as usize).unwrap();
         if Piece::is_type(target_piece, Piece::KING) {
             in_check = true;
         }
@@ -274,7 +291,7 @@ pub fn generate_sliding_piece_moves(
         for n in 0..NUM_SQUARES_TO_EDGE[square][direction] {
             let target_square = square as i32 + DIRECTION_OFFSETS[direction] * (n + 1) as i32;
 
-            let target_piece = board.squares[target_square as usize];
+            let target_piece = board.piece_at(target_square as usize).unwrap();
             if Piece::is_type(target_piece, Piece::NONE) {
                 // free to move
                 moves.push(Move {
@@ -285,9 +302,9 @@ pub fn generate_sliding_piece_moves(
                     is_en_passant: false,
                     promoted_piece: None,
                     is_castle: false,
-                    prev_castle_rights: board.castle_rights,
+                    prev_castle_rights: board.castle_rights(),
                 });
-            } else if Piece::is_color(target_piece, board.color_to_move) {
+            } else if Piece::is_color(target_piece, board.color_to_move()) {
                 // blocked by friendly piece
                 break;
             } else {
@@ -300,7 +317,7 @@ pub fn generate_sliding_piece_moves(
                     is_en_passant: false,
                     promoted_piece: None,
                     is_castle: false,
-                    prev_castle_rights: board.castle_rights,
+                    prev_castle_rights: board.castle_rights(),
                 });
                 break;
             }
@@ -343,7 +360,7 @@ pub fn generate_pawn_moves(square: usize, piece: u32, board: &Board, moves: &mut
                     captured_piece_square,
                     is_en_passant,
                     is_castle: false,
-                    prev_castle_rights: board.castle_rights,
+                    prev_castle_rights: board.castle_rights(),
                 });
             }
         } else {
@@ -355,12 +372,12 @@ pub fn generate_pawn_moves(square: usize, piece: u32, board: &Board, moves: &mut
                 captured_piece_square,
                 is_en_passant,
                 is_castle: false,
-                prev_castle_rights: board.castle_rights,
+                prev_castle_rights: board.castle_rights(),
             });
         }
     };
 
-    if Piece::is_type(board.squares[target_square as usize], Piece::NONE) {
+    if Piece::is_type(board.piece_at(target_square as usize).unwrap(), Piece::NONE) {
         // free to move
         add_move(
             moves,
@@ -372,7 +389,9 @@ pub fn generate_pawn_moves(square: usize, piece: u32, board: &Board, moves: &mut
         );
         if square / 8 == start_rank
             && Piece::is_type(
-                board.squares[(target_square + 8 * rank_offset) as usize],
+                board
+                    .piece_at((target_square + 8 * rank_offset) as usize)
+                    .unwrap(),
                 Piece::NONE,
             )
         {
@@ -389,17 +408,20 @@ pub fn generate_pawn_moves(square: usize, piece: u32, board: &Board, moves: &mut
     let left_target_square = start_square + 8 * rank_offset - 1;
     if left_target_square % 8 != 7
         && (0..=63).contains(&left_target_square)
-        && !(Piece::is_type(board.squares[left_target_square as usize], Piece::NONE))
+        && !(Piece::is_type(
+            board.piece_at(left_target_square as usize).unwrap(),
+            Piece::NONE,
+        ))
         && !Piece::is_color(
-            board.squares[left_target_square as usize],
-            board.color_to_move,
+            board.piece_at(left_target_square as usize).unwrap(),
+            board.color_to_move(),
         )
     {
         add_move(
             moves,
             square as u32,
             left_target_square as u32,
-            Some(board.squares[left_target_square as usize]),
+            Some(board.piece_at(left_target_square as usize).unwrap()),
             Some(left_target_square as usize),
             false,
         );
@@ -407,25 +429,28 @@ pub fn generate_pawn_moves(square: usize, piece: u32, board: &Board, moves: &mut
     let right_target_square = start_square + 8 * rank_offset + 1;
     if right_target_square % 8 != 0
         && (0..=63).contains(&right_target_square)
-        && !(Piece::is_type(board.squares[right_target_square as usize], Piece::NONE))
+        && !(Piece::is_type(
+            board.piece_at(right_target_square as usize).unwrap(),
+            Piece::NONE,
+        ))
         && !Piece::is_color(
-            board.squares[right_target_square as usize],
-            board.color_to_move,
+            board.piece_at(right_target_square as usize).unwrap(),
+            board.color_to_move(),
         )
     {
         add_move(
             moves,
             square as u32,
             right_target_square as u32,
-            Some(board.squares[right_target_square as usize]),
+            Some(board.piece_at(right_target_square as usize).unwrap()),
             Some(right_target_square as usize),
             false,
         );
     }
 
     // en passant
-    if board.en_passant_square.is_some() {
-        let en_passant_square = board.en_passant_square.unwrap();
+    if board.en_passant_square().is_some() {
+        let en_passant_square = board.en_passant_square().unwrap();
         // make sure we don't flip to the other side of the board
         if en_passant_square as i32 == left_target_square && en_passant_square % 8 == 7 {
             return;
@@ -443,7 +468,9 @@ pub fn generate_pawn_moves(square: usize, piece: u32, board: &Board, moves: &mut
                 en_passant_square as u32,
                 Some(
                     // set the captured piece to the pawn that was captured
-                    board.squares[(en_passant_square as i32 - 8 * rank_offset) as usize],
+                    board
+                        .piece_at((en_passant_square as i32 - 8 * rank_offset) as usize)
+                        .unwrap(),
                 ),
                 Some((en_passant_square as i32 - 8 * rank_offset) as usize),
                 true,
@@ -463,7 +490,7 @@ pub fn generate_king_moves(square: usize, _piece: u32, board: &mut Board, moves:
         if !(0..=63).contains(&target_square) {
             return;
         }
-        let target_piece = board.squares[target_square as usize];
+        let target_piece = board.piece_at(target_square as usize).unwrap();
         if target_piece == Piece::NONE {
             // free to move
             moves.push(Move {
@@ -474,9 +501,9 @@ pub fn generate_king_moves(square: usize, _piece: u32, board: &mut Board, moves:
                 is_en_passant: false,
                 promoted_piece: None,
                 is_castle: false,
-                prev_castle_rights: board.castle_rights,
+                prev_castle_rights: board.castle_rights(),
             });
-        } else if Piece::is_color(target_piece, board.color_to_move) {
+        } else if Piece::is_color(target_piece, board.color_to_move()) {
             // blocked by friendly piece
             return;
         } else {
@@ -489,13 +516,13 @@ pub fn generate_king_moves(square: usize, _piece: u32, board: &mut Board, moves:
                 is_en_passant: false,
                 promoted_piece: None,
                 is_castle: false,
-                prev_castle_rights: board.castle_rights,
+                prev_castle_rights: board.castle_rights(),
             });
             return;
         }
     });
     // check if king in check
-    let opposing_color = if board.color_to_move == Piece::WHITE {
+    let opposing_color = if board.color_to_move() == Piece::WHITE {
         Piece::BLACK
     } else {
         Piece::WHITE
@@ -508,8 +535,8 @@ pub fn generate_king_moves(square: usize, _piece: u32, board: &mut Board, moves:
 
     if !in_check && board.can_castle_kingside() {
         let target_square = square as i32 + 2;
-        if board.squares[target_square as usize] == Piece::NONE
-            && board.squares[(target_square - 1) as usize] == Piece::NONE
+        if board.piece_at(target_square as usize).unwrap() == Piece::NONE
+            && board.piece_at((target_square - 1) as usize).unwrap() == Piece::NONE
         {
             //check if king will move through check
             let mut will_move_through_check = false;
@@ -530,16 +557,16 @@ pub fn generate_king_moves(square: usize, _piece: u32, board: &mut Board, moves:
                     is_en_passant: false,
                     promoted_piece: None,
                     is_castle: true,
-                    prev_castle_rights: board.castle_rights,
+                    prev_castle_rights: board.castle_rights(),
                 });
             }
         }
     }
     if !in_check && board.can_castle_queenside() {
         let target_square = square as i32 - 2;
-        if board.squares[target_square as usize] == Piece::NONE
-            && board.squares[(target_square + 1) as usize] == Piece::NONE
-            && board.squares[(target_square - 1) as usize] == Piece::NONE
+        if board.piece_at(target_square as usize).unwrap() == Piece::NONE
+            && board.piece_at((target_square + 1) as usize).unwrap() == Piece::NONE
+            && board.piece_at((target_square - 1) as usize).unwrap() == Piece::NONE
         {
             let mut will_move_through_check = false;
             let mut current_square = square as i32;
@@ -559,7 +586,7 @@ pub fn generate_king_moves(square: usize, _piece: u32, board: &mut Board, moves:
                     is_en_passant: false,
                     promoted_piece: None,
                     is_castle: true,
-                    prev_castle_rights: board.castle_rights,
+                    prev_castle_rights: board.castle_rights(),
                 });
             }
         }
@@ -585,7 +612,7 @@ pub fn generate_knight_moves(square: usize, _piece: u32, board: &Board, moves: &
         if !((row_diff == 2 && col_diff == 1) || (row_diff == 1 && col_diff == 2)) {
             return;
         }
-        let target_piece = board.squares[target_square as usize];
+        let target_piece = board.piece_at(target_square as usize).unwrap();
         if target_piece == Piece::NONE {
             // free to move
             moves.push(Move {
@@ -596,9 +623,9 @@ pub fn generate_knight_moves(square: usize, _piece: u32, board: &Board, moves: &
                 is_en_passant: false,
                 promoted_piece: None,
                 is_castle: false,
-                prev_castle_rights: board.castle_rights,
+                prev_castle_rights: board.castle_rights(),
             });
-        } else if Piece::is_color(target_piece, board.color_to_move) {
+        } else if Piece::is_color(target_piece, board.color_to_move()) {
             // blocked by friendly piece
             return;
         } else {
@@ -611,7 +638,7 @@ pub fn generate_knight_moves(square: usize, _piece: u32, board: &Board, moves: &
                 is_en_passant: false,
                 promoted_piece: None,
                 is_castle: false,
-                prev_castle_rights: board.castle_rights,
+                prev_castle_rights: board.castle_rights(),
             });
             return;
         }

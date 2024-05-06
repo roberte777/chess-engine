@@ -8,7 +8,7 @@ use crate::{
 * Generates a board with a 1 if the square is attacked by a sliding piece
 */
 pub fn generate_sliding_attack(square: usize, board: &Board, color: u32) -> [usize; 64] {
-    let piece = board.squares[square];
+    let piece = board.piece_at(square).unwrap();
     if !Piece::is_sliding_piece(piece) {
         return [0; 64];
     }
@@ -29,7 +29,7 @@ pub fn generate_sliding_attack(square: usize, board: &Board, color: u32) -> [usi
         for n in 0..NUM_SQUARES_TO_EDGE[square][direction] {
             let target_square = square as i32 + DIRECTION_OFFSETS[direction] * (n + 1) as i32;
 
-            let target_piece = board.squares[target_square as usize];
+            let target_piece = board.piece_at(target_square as usize).unwrap();
             if Piece::is_type(target_piece, Piece::NONE) {
                 // free to move
                 attack_squares[target_square as usize] = 1;
@@ -46,7 +46,7 @@ pub fn generate_sliding_attack(square: usize, board: &Board, color: u32) -> [usi
     attack_squares
 }
 pub fn generate_pawn_attack(square: usize, board: &Board, _color: u32) -> [usize; 64] {
-    let piece = board.squares[square];
+    let piece = board.piece_at(square).unwrap();
     let mut attack_squares = [0; 64];
     if !Piece::is_type(piece, Piece::PAWN) {
         warn!("generate pawn attack called on a non pawn piece");
@@ -79,8 +79,8 @@ pub fn generate_pawn_attack(square: usize, board: &Board, _color: u32) -> [usize
     }
 
     // en passant
-    if board.en_passant_square.is_some() {
-        let en_passant_square = board.en_passant_square.unwrap();
+    if board.en_passant_square().is_some() {
+        let en_passant_square = board.en_passant_square().unwrap();
         // make sure we don't flip to the other side of the board
         if en_passant_square as i32 == left_target_square && en_passant_square % 8 == 7 {
             return attack_squares;
@@ -120,7 +120,7 @@ pub fn generate_knight_attack(square: usize, board: &Board, color: u32) -> [usiz
             return;
         }
 
-        let target_piece = board.squares[target_square as usize];
+        let target_piece = board.piece_at(target_square as usize).unwrap();
         if target_piece == Piece::NONE {
             // free to move
             attack_squares[target_square as usize] = 1;
@@ -150,7 +150,7 @@ pub fn generate_king_attack(square: usize, board: &Board, color: u32) -> [usize;
             return;
         }
 
-        let target_piece = board.squares[target_square as usize];
+        let target_piece = board.piece_at(target_square as usize).unwrap();
         if target_piece == Piece::NONE {
             // free to move
             attack_squares[target_square as usize] = 1;
@@ -169,7 +169,7 @@ pub fn generate_king_attack(square: usize, board: &Board, color: u32) -> [usize;
 pub fn generate_attack_board_for_color(color: u32, board: &Board) -> [usize; 64] {
     let mut attack_board = [0; 64];
     (0..64).for_each(|square| {
-        let piece = board.squares[square];
+        let piece = board.piece_at(square).unwrap();
         if Piece::is_color(piece, color) {
             let attack_squares;
             if Piece::is_type(piece, Piece::PAWN) {

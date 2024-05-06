@@ -6,10 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-criterion = "0.5.1"
 lazy_static = "1.4.0"
 log = "0.4.21"
 thiserror = "1.0.59"
+[dev-dependencies]
+criterion = "0.5.1"
 
 [[bench]]
 name = "move_gen"

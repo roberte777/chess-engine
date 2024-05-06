@@ -4,12 +4,12 @@ use chess::{
     board::{Board, STARTING_FEN},
     piece::Piece,
 };
-use rusty_rook::score::{minimax, minimax_ab};
+use rusty_rook::score::minimax_ab;
 
 fn main() {
     let mut board = Board::from_fen(STARTING_FEN).unwrap();
     loop {
-        let turn = if board.color_to_move == Piece::WHITE {
+        let turn = if board.color_to_move() == Piece::WHITE {
             "White"
         } else {
             "Black"
@@ -17,7 +17,7 @@ fn main() {
         println!("Turn: {}", turn);
         println!("{}", board);
         // engine to move
-        if board.color_to_move == Piece::BLACK {
+        if board.color_to_move() == Piece::BLACK {
             let (score, mv) = minimax_ab(&mut board, 6, i32::MIN, i32::MAX);
             // let (score, mv) = minimax(&mut board, 4);
             println!("Score: {}", score);

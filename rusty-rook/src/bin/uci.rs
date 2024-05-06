@@ -4,7 +4,7 @@ use chess::{
     board::{Board, STARTING_FEN},
     chess_move::Move,
 };
-use rusty_rook::score::{minimax, minimax_ab};
+use rusty_rook::score::minimax_ab;
 
 fn main() {
     let stdin = io::stdin();

@@ -84,14 +84,14 @@ fn score_piece_square(board: &Board) -> i32 {
 }
 
 pub fn minimax(board: &mut Board, depth: u32) -> (i32, Option<Move>) {
-    let maximizing = board.color_to_move == Piece::WHITE;
+    let maximizing = board.color_to_move() == Piece::WHITE;
     if depth == 0 {
         return (score(board), None); // No move to return when depth is 0
     }
     let mut best_move = None;
     let mut best_score = if maximizing { i32::MIN } else { i32::MAX };
     for mv in generate_legal_moves(board) {
-        if Piece::get_color(mv.start_square) != board.color_to_move {
+        if Piece::get_color(mv.start_square) != board.color_to_move() {
             println!("Invalid move: {:?}", mv);
             continue;
         }
@@ -112,7 +112,7 @@ pub fn minimax_ab(
     mut alpha: i32,
     mut beta: i32,
 ) -> (i32, Option<Move>) {
-    let maximizing = board.color_to_move == Piece::WHITE;
+    let maximizing = board.color_to_move() == Piece::WHITE;
     if depth == 0 {
         return (score(board), None); // No move to return when depth is 0
     }

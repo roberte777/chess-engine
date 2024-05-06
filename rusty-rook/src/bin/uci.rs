@@ -1,10 +1,10 @@
 use std::io::{self, BufRead, Write};
 
-use chess_engine::{
+use chess::{
     board::{Board, STARTING_FEN},
     chess_move::Move,
-    score::{minimax, minimax_ab},
 };
+use rusty_rook::score::{minimax, minimax_ab};
 
 fn main() {
     let stdin = io::stdin();

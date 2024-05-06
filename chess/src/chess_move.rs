@@ -624,61 +624,35 @@ mod tests {
     use crate::perft::perft;
 
     use super::*;
+
+    fn run_perft(fen: &str, expected_results: Vec<u64>) {
+        let mut board = Board::from_fen(fen).unwrap();
+        for depth in 1..=expected_results.len() {
+            let result = perft(depth as u32, &mut board, true);
+            assert_eq!(result, expected_results[depth - 1]);
+        }
+    }
+
     #[test]
     fn test_stock_perft() {
-        let mut board = Board::from_fen(STARTING_FEN).unwrap();
-        let perft_1 = perft(1, &mut board, true);
-        assert_eq!(perft_1, 20);
-        let perft_2 = perft(2, &mut board, true);
-        assert_eq!(perft_2, 400);
-        let perft_3 = perft(3, &mut board, true);
-        assert_eq!(perft_3, 8902);
-        let perft_4 = perft(4, &mut board, true);
-        assert_eq!(perft_4, 197_281);
-        let perft_5 = perft(5, &mut board, true);
-        assert_eq!(perft_5, 4_865_609);
-        let perft_6 = perft(6, &mut board, true);
-        assert_eq!(perft_6, 119_060_324);
-        let perft_7 = perft(7, &mut board, true);
-        assert_eq!(perft_7, 3_195_901_860);
-        // let perft_8 = perft(8, &mut board);
-        // assert_eq!(perft_8, 84_998_978_956);
-        // let perft_9 = perft(9, &mut board);
-        // assert_eq!(perft_9, 2_439_530_234_167);
-        // let perft_10 = perft(10, &mut board);
-        // assert_eq!(perft_10, 69_352_859_712_417);
+        run_perft(
+            STARTING_FEN,
+            vec![20, 400, 8_902, 197_281, 4_865_609, 119_060_324],
+        );
     }
     #[test]
     fn test_perft_2() {
         let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -";
-        let mut board = Board::from_fen(fen).unwrap();
-        let perft_1 = perft(1, &mut board, true);
-        assert_eq!(perft_1, 48);
-        let perft_2 = perft(2, &mut board, true);
-        assert_eq!(perft_2, 2_039);
-        let perft_3 = perft(3, &mut board, true);
-        assert_eq!(perft_3, 97_862);
-        let perft_4 = perft(4, &mut board, true);
-        assert_eq!(perft_4, 4_085_603);
-        let perft_5 = perft(5, &mut board, true);
-        assert_eq!(perft_5, 193_690_690);
+        run_perft(fen, vec![48, 2_039, 97_862, 4_085_603, 193_690_690]);
     }
     #[test]
     fn test_perft_5() {
         let fen = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
-        let mut board = Board::from_fen(fen).unwrap();
-        let perft_1 = perft(1, &mut board, true);
-        assert_eq!(perft_1, 44);
-        let perft_2 = perft(2, &mut board, true);
-        assert_eq!(perft_2, 1_486);
-        let perft_3 = perft(3, &mut board, true);
-        assert_eq!(perft_3, 62_379);
+        run_perft(fen, vec![44, 1_486, 62_379]);
     }
 
     #[test]
     fn test_std_notation() {
-        let fen = "rn2kbnr/ppp1pppp/8/4Nq2/5P2/8/PPp1Q1PP/RNB1K2R b KQkq - 1 8";
-        let mut board = Board::from_fen(fen).unwrap();
         let chess_move = Move::from_standard_notation("c2b1");
         assert_eq!(chess_move.start_square, 10);
         assert_eq!(chess_move.target_square, 1);

@@ -1,4 +1,4 @@
-use crate::{
+use chess::{
     board::Board,
     chess_move::{generate_legal_moves, Move},
     piece::Piece,

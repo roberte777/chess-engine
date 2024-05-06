@@ -1,10 +1,10 @@
 use std::io;
 
-use chess_engine::{
+use chess::{
     board::{Board, STARTING_FEN},
     piece::Piece,
-    score::{minimax, minimax_ab},
 };
+use rusty_rook::score::{minimax, minimax_ab};
 
 fn main() {
     let mut board = Board::from_fen(STARTING_FEN).unwrap();

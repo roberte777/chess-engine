@@ -286,6 +286,33 @@ impl Board {
             self.remove_piece(m.to, captured);
         }
 
+        // update castling rights if the captured piece is a rook
+        if let Some(captured) = m.captured_piece {
+            if captured == PieceType::Rook {
+                if self.side_to_move == Color::White {
+                    if m.to == 56 {
+                        self.castling_rights[3] = false;
+                    } else if m.to == 63 {
+                        self.castling_rights[2] = false;
+                    }
+                    // if m.to == 0 {
+                    //     self.castling_rights[1] = false;
+                    // }
+                    // // White queen side rook
+                    // else if m.to == 7 {
+                    //     self.castling_rights[0] = false;
+                    // } // White king side rook
+                } else if m.to == 0 {
+                    self.castling_rights[1] = false;
+                }
+                // Black queen side rook
+                else if m.to == 7 {
+                    self.castling_rights[0] = false;
+                    // self.castling_rights[2] = false;
+                } // Black king side rook
+            }
+        }
+
         // Handle en passant
         if m.flags & FLAG_EN_PASSANT != 0 {
             self.handle_en_passant(m);
@@ -420,7 +447,7 @@ impl Board {
         }
         if last_move.flags & FLAG_PROMOTION != 0 {
             // Demote the piece back to a pawn and place it at the 'from' location
-            self.demote_pawn(last_move.from);
+            self.demote_pawn(last_move.from, last_move.promoted_piece.unwrap());
         }
         if last_move.flags & FLAG_EN_PASSANT != 0 {
             self.unhandle_en_passant(last_move);
@@ -467,10 +494,10 @@ impl Board {
             self.side_to_move.opposite(),
         );
     }
-    fn demote_pawn(&mut self, square: u8) {
+    fn demote_pawn(&mut self, square: u8, piece: PieceType) {
         // Replace the promoted piece back to a pawn
         let mask = 1 << square;
-        self.bitboards[self.side_to_move as usize][PieceType::Queen as usize].0 &= !mask;
+        self.bitboards[self.side_to_move as usize][piece as usize].0 &= !mask;
         self.bitboards[self.side_to_move as usize][PieceType::Pawn as usize].0 |= mask;
     }
     pub fn update_attack_and_defense(&mut self) {
@@ -503,17 +530,30 @@ impl Board {
     }
     /// Checks if a particular square is attacked by any piece of the specified color.
     pub fn is_square_attacked(&self, square: u8, attacker_color: Color) -> bool {
+        // println!("color {:?}", attacker_color);
         let opponent_pieces = self.bitboards[attacker_color as usize];
+        // println!("square: {}", square);
         let square_bit = 1u64 << square;
 
         // Check attacks from pawns
-        if MoveGenerator::pawn_attacks(square, attacker_color).0
+        // self.print_board();
+        // println!(
+        //     "{}",
+        //     MoveGenerator::pawn_attacks(square, attacker_color.opposite())
+        // );
+        // println!(
+        //     "{}",
+        //     MoveGenerator::pawn_attacks(square, attacker_color.opposite()).0
+        // );
+        if MoveGenerator::pawn_attacks(square, attacker_color.opposite()).0
             & opponent_pieces[PieceType::Pawn as usize].0
             != 0
         {
+            // println!("true");
             return true;
         }
 
+        // println!("{}", MoveGenerator::knight_attacks(square));
         // Check attacks from knights
         if MoveGenerator::knight_attacks(square) & opponent_pieces[PieceType::Knight as usize].0
             != 0

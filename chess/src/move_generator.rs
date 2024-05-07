@@ -8,11 +8,11 @@ pub struct MoveGenerator;
 impl MoveGenerator {
     pub fn generate_legal_moves(board: &mut Board) -> Vec<ChessMove> {
         let moves = Self::generate_moves(board);
-        // println!("All moves: {}", moves.len());
         let mut legal_moves = Vec::new();
 
         for m in moves.into_iter() {
             board.make_move(m);
+            // board.print_board();
             if !board.is_king_in_check(board.side_to_move.opposite()) {
                 legal_moves.push(m);
             }
@@ -65,126 +65,202 @@ impl MoveGenerator {
         }
     }
     fn generate_pawn_moves(
-    board: &Board,
-    bitboard: BitBoard,
-    color: Color,
-    moves: &mut Vec<ChessMove>,
-) {
-    let not_occupied = !board.combined.0; // Not occupied squares
-    let rank_mask = 0xFF; // Mask for a single rank
-    let promotion_rank_mask = match color {
-        Color::White => rank_mask << (7 * 8),
-        Color::Black => rank_mask,
-    };
-    let initial_rank_mask = match color {
-        Color::White => rank_mask << (1 * 8),
-        Color::Black => rank_mask << (6 * 8),
-    };
+        board: &Board,
+        bitboard: BitBoard,
+        color: Color,
+        moves: &mut Vec<ChessMove>,
+    ) {
+        let not_occupied = !board.combined.0; // Not occupied squares
+        let rank_mask = 0xFF; // Mask for a single rank
+        let promotion_rank_mask = match color {
+            Color::White => rank_mask << (7 * 8),
+            Color::Black => rank_mask,
+        };
+        let initial_rank_mask = match color {
+            Color::White => rank_mask << (1 * 8),
+            Color::Black => rank_mask << (6 * 8),
+        };
 
-    let forward_one_step = match color {
-        Color::White => 8,
-        Color::Black => -8,
-    };
-    let forward_two_steps = forward_one_step * 2;
+        let forward_one_step = match color {
+            Color::White => 8,
+            Color::Black => -8,
+        };
+        let forward_two_steps = forward_one_step * 2;
 
-    // Single step forward moves
-    let mut single_moves = (match color {
-        Color::White => bitboard.0 << forward_one_step,
-        Color::Black => bitboard.0 >> -forward_one_step,
-    }) & not_occupied;
+        // Single step forward moves
+        let mut single_moves = (match color {
+            Color::White => bitboard.0 << forward_one_step,
+            Color::Black => bitboard.0 >> -forward_one_step,
+        }) & not_occupied;
 
         // Double step forward moves, correctly applying initial rank mask to original pawns bitboard
-// Now we first ensure the square immediately in front of the pawn is clear before considering the double move
-let intermediate_single_moves = match color {
-    Color::White => (bitboard.0 & initial_rank_mask) << forward_one_step,
-    Color::Black => (bitboard.0 & initial_rank_mask) >> -forward_one_step,
-} & not_occupied;  // Check if the immediate square is free
+        // Now we first ensure the square immediately in front of the pawn is clear before considering the double move
+        let intermediate_single_moves = match color {
+            Color::White => (bitboard.0 & initial_rank_mask) << forward_one_step,
+            Color::Black => (bitboard.0 & initial_rank_mask) >> -forward_one_step,
+        } & not_occupied; // Check if the immediate square is free
 
-let double_moves = match color {
-    Color::White => intermediate_single_moves << forward_one_step,
-    Color::Black => intermediate_single_moves >> -forward_one_step,
-} & not_occupied;  // Now check if the second square is free too
-        //
-    // Captures
-    let left_captures = match color {
-        Color::White => (bitboard.0 & !0x0101010101010101) << 7,
-        Color::Black => (bitboard.0 & !0x0101010101010101) >> 9,
-    } & board.occupied[color.opposite() as usize].0;
+        let double_moves = match color {
+            Color::White => intermediate_single_moves << forward_one_step,
+            Color::Black => intermediate_single_moves >> -forward_one_step,
+        } & not_occupied; // Now check if the second square is free too
+                          //
+                          // Captures
+        let left_captures = match color {
+            Color::White => (bitboard.0 & !0x0101010101010101) << 7,
+            Color::Black => (bitboard.0 & !0x0101010101010101) >> 9,
+        } & board.occupied[color.opposite() as usize].0;
 
-    let right_captures = match color {
-        Color::White => (bitboard.0 & !0x8080808080808080) << 9,
-        Color::Black => (bitboard.0 & !0x8080808080808080) >> 7,
-    } & board.occupied[color.opposite() as usize].0;
+        let right_captures = match color {
+            Color::White => (bitboard.0 & !0x8080808080808080) << 9,
+            Color::Black => (bitboard.0 & !0x8080808080808080) >> 7,
+        } & board.occupied[color.opposite() as usize].0;
 
         // println!("bitboard: {}", bitboard);
         // println!("bitboard: {}", board.occupied[color.opposite() as usize]);
         // println!("left_captures: {}", left_captures);
         // println!("right_captures: {}", right_captures);
 
-    // Generate moves for single and double advances
-    Self::generate_pawn_move_list(
-        single_moves,
-        forward_one_step,
-        promotion_rank_mask,
-        board,
-        moves,
-        color,
-        false,
-    );
-    Self::generate_pawn_move_list(
-        double_moves,
-        forward_two_steps,
-        promotion_rank_mask,
-        board,
-        moves,
-        color,
-        false,
-    );
+        // Generate moves for single and double advances
+        Self::generate_pawn_move_list(
+            single_moves,
+            forward_one_step,
+            promotion_rank_mask,
+            board,
+            moves,
+            color,
+            false,
+            false,
+        );
+        Self::generate_pawn_move_list(
+            double_moves,
+            forward_two_steps,
+            promotion_rank_mask,
+            board,
+            moves,
+            color,
+            false,
+            false,
+        );
 
-    // Generate capture moves
-    Self::generate_pawn_move_list(
-        left_captures,
-        forward_one_step - 1,
-        promotion_rank_mask,
-        board,
-        moves,
-        color,
-        true,
-    );
-    Self::generate_pawn_move_list(
-        right_captures,
-        forward_one_step + 1,
-        promotion_rank_mask,
-        board,
-        moves,
-        color,
-        true,
-    );
+        // Generate capture moves
+        Self::generate_pawn_move_list(
+            left_captures,
+            forward_one_step - 1,
+            promotion_rank_mask,
+            board,
+            moves,
+            color,
+            true,
+            false,
+        );
+        Self::generate_pawn_move_list(
+            right_captures,
+            forward_one_step + 1,
+            promotion_rank_mask,
+            board,
+            moves,
+            color,
+            true,
+            false,
+        );
 
-    // Handle en passant captures
-    if let Some(en_passant_square) = board.en_passant {
-        let en_passant_target = 1u64 << en_passant_square;
-        let potential_en_passant_attackers = match color {
-            Color::White => en_passant_target >> 1 | en_passant_target << 1,
-            Color::Black => en_passant_target >> 1 | en_passant_target << 1,
-        } & bitboard.0;
+        // if let Some(en_passant_square) = board.en_passant {
+        //     // Calculate the square behind the en passant square based on the color of the pawn that made the two-square move.
+        //     let passed_square = if color == Color::White {
+        //         en_passant_square - 8 // The passed square for White is one rank below the landing square
+        //     } else {
+        //         en_passant_square + 8 // The passed square for Black is one rank above the landing square
+        //     };
+        //
+        //     let passed_target = 1u64 << en_passant_square;
+        //     let file = en_passant_square % 8;
+        //
+        //     // Mask out the edges if the passed square is on a or h file
+        //     let valid_attackers = match file {
+        //         0 => en_passant_square << 1, // Passed square on a-file, attack can only come from b-file
+        //         7 => en_passant_square >> 1, // Passed square on h-file, attack can only come from g-file
+        //         _ => (en_passant_square >> 1 | en_passant_square << 1), // Normal cases
+        //     };
+        //
+        //     let potential_en_passant_attackers = valid_attackers & bitboard.0;
+        //     board.print_board();
+        //     println!("{}", BitBoard::new(potential_en_passant_attackers));
+        //
+        //     // If potential attackers can capture the passed square
+        //     if potential_en_passant_attackers != 0 {
+        //         Self::generate_pawn_move_list(
+        //             potential_en_passant_attackers,
+        //             forward_one_step,
+        //             promotion_rank_mask,
+        //             board,
+        //             moves,
+        //             color,
+        //             true,
+        //         );
+        //     }
+        // }
 
-        // If potential attackers can capture the en passant target
-        if potential_en_passant_attackers != 0 {
-            Self::generate_pawn_move_list(
-                potential_en_passant_attackers,
-                forward_one_step,
-                promotion_rank_mask,
-                board,
-                moves,
-                color,
-                true,
-            );
+        // // Handle en passant captures
+        if let Some(en_passant_square) = board.en_passant {
+            let file = en_passant_square % 8; // 0 is a-file, 7 is h-file
+                                              // Calculate the square behind the en passant square based on the color of the pawn that made the two-square move.
+            let passed_square = if color == Color::White {
+                en_passant_square - 8 // The passed square for White is one rank below the landing square
+            } else {
+                en_passant_square + 8 // The passed square for Black is one rank above the landing square
+            };
+            let en_passant_target = 1u64 << passed_square;
+
+            // Mask out the edges if the en passant square is on a or h file
+            let valid_attackers = match file {
+                0 => en_passant_target << 1, // En passant square on a-file, attack can only come from b-file
+                7 => en_passant_target >> 1, // En passant square on h-file, attack can only come from g-file
+                _ => en_passant_target >> 1 | en_passant_target << 1, // Normal cases
+            };
+
+            let mut potential_en_passant_attackers = valid_attackers & bitboard.0;
+
+            // If potential attackers can capture the en passant target
+            if potential_en_passant_attackers != 0 {
+                // iterate over all potential en passant attackers
+                // generate moves
+                while potential_en_passant_attackers != 0 {
+                    let from = potential_en_passant_attackers.trailing_zeros() as u8;
+                    let to = en_passant_square;
+                    let captured_piece = PieceType::Pawn;
+                    let flags = FLAG_EN_PASSANT;
+                    let promoted_piece = None;
+
+                    moves.push(ChessMove {
+                        from,
+                        to,
+                        captured_piece: Some(captured_piece),
+                        promoted_piece,
+                        flags,
+                        old_castling_rights: board.castling_rights,
+                        old_en_passant_square: board.en_passant,
+                        old_halfmove_clock: board.half_move_clock,
+                    });
+
+                    potential_en_passant_attackers &= potential_en_passant_attackers - 1;
+                }
+                // Self::generate_pawn_move_list(
+                //     potential_en_passant_attackers,
+                //     forward_one_step,
+                //     promotion_rank_mask,
+                //     board,
+                //     moves,
+                //     color,
+                //     true,
+                //     true,
+                // );
+            }
         }
     }
-}
-    
 
+    /// Do not use this method for en passant
+    // TODO: Remove en passant from this method
     fn generate_pawn_move_list(
         moves_bitboard: u64,
         step: i8,
@@ -193,6 +269,7 @@ let double_moves = match color {
         moves: &mut Vec<ChessMove>,
         color: Color,
         is_capture: bool,
+        is_en_passant: bool,
     ) {
         let mut moves_bits = moves_bitboard;
         while moves_bits != 0 {
@@ -230,17 +307,15 @@ let double_moves = match color {
                     to,
                     promoted_piece: None,
                     captured_piece: if is_capture {
-                        Some(board.piece_at(to, color.opposite()).unwrap())
+                        if is_en_passant {
+                            Some(PieceType::Pawn)
+                        } else {
+                            Some(board.piece_at(to, color.opposite()).unwrap())
+                        }
                     } else {
                         None
                     },
-                    flags: if is_capture
-                        && (1u64 << to) == board.en_passant.map(|ep| 1u64 << ep).unwrap_or(0)
-                    {
-                        FLAG_EN_PASSANT
-                    } else {
-                        0
-                    },
+                    flags: if is_en_passant { FLAG_EN_PASSANT } else { 0 },
                     old_castling_rights: board.castling_rights,
                     old_en_passant_square: board.en_passant,
                     old_halfmove_clock: board.half_move_clock,
@@ -248,17 +323,22 @@ let double_moves = match color {
             }
         }
     }
-    /// Generate all pawn attacks targeting a given square.
-    pub fn pawn_attacks(square: u8, attacker_color: Color) -> BitBoard {
-        let mask = 1u64 << square;
-        match attacker_color {
-            Color::White => {
-                BitBoard(((mask << 7) & !0x8080808080808080) | ((mask << 9) & !0x0101010101010101))
-            }
-            Color::Black => {
-                BitBoard(((mask >> 9) & !0x8080808080808080) | ((mask >> 7) & !0x0101010101010101))
-            }
-        }
+    /// Generates pawn attacks from a given square
+    pub fn pawn_attacks(square: u8, color: Color) -> BitBoard {
+        let mask = 1u64 << square; // Position the pawn on the square.
+
+        let left_attacks = match color {
+            Color::White => (mask & !0x0101010101010101) << 7, // Mask prevents wrapping from h-file to a-file
+            Color::Black => (mask & !0x0101010101010101) >> 9, // Same mask for Black pawns
+        };
+
+        let right_attacks = match color {
+            Color::White => (mask & !0x8080808080808080) << 9, // Mask prevents wrapping from a-file to h-file
+            Color::Black => (mask & !0x8080808080808080) >> 7, // Same mask for Black pawns
+        };
+
+        // Combine left and right attacks into one BitBoard
+        BitBoard(left_attacks | right_attacks)
     }
 
     /// Generates all knight moves for a given knight bitboard.
@@ -280,14 +360,7 @@ let double_moves = match color {
             Self::generate_move_list(board, from, possible_moves, moves, color, None);
 
             let possible_captures = knight_moves & opponent_pieces; // Capture moves
-            Self::generate_move_list(
-                board,
-                from,
-                possible_captures,
-                moves,
-                color,
-                Some(0)
-            );
+            Self::generate_move_list(board, from, possible_captures, moves, color, Some(0));
 
             knights &= knights - 1; // Remove this knight from the set
         }
@@ -382,14 +455,7 @@ let double_moves = match color {
             Self::generate_move_list(board, from, possible_moves, moves, color, None);
 
             let possible_captures = bishop_moves & opponent_pieces; // Capture moves
-            Self::generate_move_list(
-                board,
-                from,
-                possible_captures,
-                moves,
-                color,
-                Some(0)
-            );
+            Self::generate_move_list(board, from, possible_captures, moves, color, Some(0));
 
             bishops &= bishops - 1; // Remove this bishop from the set
         }
@@ -443,14 +509,7 @@ let double_moves = match color {
             Self::generate_move_list(board, from, possible_moves, moves, color, None);
 
             let possible_captures = rook_moves & opponent_pieces; // Capture moves
-            Self::generate_move_list(
-                board,
-                from,
-                possible_captures,
-                moves,
-                color,
-                Some(0)
-            );
+            Self::generate_move_list(board, from, possible_captures, moves, color, Some(0));
 
             rooks &= rooks - 1; // Remove this rook from the set
         }
@@ -502,14 +561,7 @@ let double_moves = match color {
             Self::generate_move_list(board, from, possible_moves, moves, color, None);
 
             let possible_captures = queen_moves & opponent_pieces; // Capture moves
-            Self::generate_move_list(
-                board,
-                from,
-                possible_captures,
-                moves,
-                color,
-                Some(0)
-            );
+            Self::generate_move_list(board, from, possible_captures, moves, color, Some(0));
 
             queens &= queens - 1; // Remove this queen from the set
         }
@@ -533,20 +585,15 @@ let double_moves = match color {
 
         while kings != 0 {
             let from = kings.trailing_zeros() as u8;
+            // println!("own pieces: {}", own_pieces);
             let king_moves = Self::king_attacks(from) & !own_pieces;
+            // println!("king_moves: {}", king_moves);
 
             let possible_moves = king_moves & !opponent_pieces; // Normal moves
             Self::generate_move_list(board, from, possible_moves, moves, color, None);
 
             let possible_captures = king_moves & opponent_pieces; // Capture moves
-            Self::generate_move_list(
-                board,
-                from,
-                possible_captures,
-                moves,
-                color,
-                Some(0)
-            );
+            Self::generate_move_list(board, from, possible_captures, moves, color, Some(0));
 
             kings &= kings - 1; // Remove this king from the set
 
@@ -554,7 +601,7 @@ let double_moves = match color {
             if color == Color::White {
                 // White kingside castling
                 if board.castling_rights[0] && (board.combined.0 & 0x60) == 0 // Check if squares f1, g1 are clear
-                && !board.is_square_attacked(4, Color::Black) 
+                && !board.is_square_attacked(4, Color::Black)
                 && !board.is_square_attacked(5, Color::Black)
                 && !board.is_square_attacked(6, Color::Black)
                 {
@@ -626,28 +673,33 @@ let double_moves = match color {
     }
 
     pub fn king_attacks(square: u8) -> u64 {
-    let mut attacks = 0u64;
-    let bit = 1u64 << square;
+        let mut attacks = 0u64;
+        let mut bit = 1u64 << square;
 
-    // Positions around the king
-    let not_a_file = 0xfefefefefefefefe; // ~0x0101010101010101
-    let not_h_file = 0x7f7f7f7f7f7f7f7f; // ~0x8080808080808080
+        // Positions around the king
+        let not_a_file = 0xfefefefefefefefe; // ~0x0101010101010101
+        let not_h_file = 0x7f7f7f7f7f7f7f7f; // ~0x8080808080808080
 
-    // King can move one square in any direction
-    // Horizontal + vertical
-    attacks |= (bit << 1) & not_h_file; // Move right
-    attacks |= (bit >> 1) & not_a_file; // Move left
-    attacks |= (bit << 8);              // Move up
-    attacks |= (bit >> 8);              // Move down
+        // King can move one square in any direction
+        // Horizontal + vertical
+        // attacks |= (bit >> 1) & not_h_file; // Move right west one
+        // attacks |= (bit << 1) & not_a_file; // Move left east one
+        // attacks |= bit << 8; // Move up
+        // attacks |= bit >> 8; // Move down
+        //
+        // // Diagonal
+        // attacks |= (bit << 7) & not_h_file; // Move up-right
+        // attacks |= (bit << 9) & not_a_file; // Move up-left
+        // attacks |= (bit >> 9) & not_h_file; // Move down-right
+        // attacks |= (bit >> 7) & not_a_file; // Move down-left
 
-    // Diagonal
-    attacks |= (bit << 9) & not_h_file; // Move up-right
-    attacks |= (bit << 7) & not_a_file; // Move up-left
-    attacks |= (bit >> 7) & not_h_file; // Move down-right
-    attacks |= (bit >> 9) & not_a_file; // Move down-left
+        attacks = ((bit << 1) & not_a_file) | ((bit >> 1) & not_h_file);
+        bit |= attacks;
+        attacks |= (bit << 8) | (bit >> 8);
+        // println!("king_attacks: {}", attacks);
 
-    attacks
-}
+        attacks
+    }
     // /// Calculates all possible king moves from a given position using bitboards.
     // pub fn king_attacks(square: u8) -> u64 {
     //     let mut attacks = 0u64;
@@ -673,7 +725,11 @@ let double_moves = match color {
 
 #[cfg(test)]
 mod tests {
-    use crate::{board::{STARTING_FEN, Board}, perft::perft};
+    use crate::{
+        board::{Board, STARTING_FEN},
+        chess_move::ChessMove,
+        perft::perft,
+    };
 
     use super::MoveGenerator;
     // use crate::perft::peft;
@@ -688,8 +744,61 @@ mod tests {
 
     #[test]
     fn test_perft_initial_position() {
-        run_perft_test(STARTING_FEN, vec![20, 400, 8_902, 197_281])
+        run_perft_test(STARTING_FEN, vec![20, 400, 8_902, 197_281, 4_865_609])
     }
+
+    #[test]
+    fn test_perft_position_2() {
+        let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+        run_perft_test(fen, vec![48, 2_039, 97_862, 4_085_603])
+    }
+
+    // #[test]
+    // fn test_broken() {
+    //     let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+    //     let mut board = Board::from_fen(fen).unwrap();
+    //     let moves = vec![
+    //         ChessMove {
+    //             from: 8,
+    //             to: 16,
+    //             captured_piece: None,
+    //             flags: 0,
+    //             old_castling_rights: [true; 4],
+    //             old_en_passant_square: None,
+    //             old_halfmove_clock: 0,
+    //             promoted_piece: None,
+    //         },
+    //         ChessMove {
+    //             from: 23,
+    //             to: 14,
+    //             captured_piece: Some(crate::piece::PieceType::Pawn),
+    //             flags: 0,
+    //             old_castling_rights: [true; 4],
+    //             old_en_passant_square: None,
+    //             old_halfmove_clock: 0,
+    //             promoted_piece: None,
+    //         },
+    //         ChessMove {
+    //             from: 15,
+    //             to: 23,
+    //             captured_piece: None,
+    //             flags: 0,
+    //             old_castling_rights: [true; 4],
+    //             old_en_passant_square: None,
+    //             old_halfmove_clock: 0,
+    //             promoted_piece: None,
+    //         },
+    //     ];
+    //     for mv in moves.clone() {
+    //         board.make_move(mv);
+    //         board.print_board();
+    //     }
+    //     for mv in moves {
+    //         board.unmake();
+    //         board.print_board();
+    //     }
+    //     assert!(false);
+    // }
 
     #[test]
     fn test_not_working() {
@@ -754,7 +863,7 @@ mod tests {
         }
         assert_eq!(moves.len(), 19);
     }
-        #[test]
+    #[test]
     fn test_not_working_5() {
         let fen = "rnbqkbnr/pp1ppppp/8/2p5/5P2/6P1/PPPPP2P/RNBQKBNR b KQkq f3 0 2";
         let mut board = Board::from_fen(fen).unwrap();
@@ -779,4 +888,58 @@ mod tests {
         assert_eq!(nodes, 22);
     }
 
+    #[test]
+    fn test_not_working_7() {
+        let fen = "rnbqkbnr/2pppppp/p7/Pp6/8/8/1PPPPPPP/RNBQKBNR w KQkq b6 0 3";
+        let mut board = Board::from_fen(fen).unwrap();
+        let moves = MoveGenerator::generate_legal_moves(&mut board);
+        for m in &moves {
+            println!("{}", m.to_standard_notation());
+        }
+        assert_eq!(moves.len(), 22);
+
+        let nodes = perft(1, &mut board, true);
+        assert_eq!(nodes, 22);
+    }
+    #[test]
+    fn test_not_working_8() {
+        let fen = "rnbqkbnr/p1pppppp/8/8/1p6/3P4/PPPKPPPP/RNBQ1BNR w kq - 0 3";
+        let mut board = Board::from_fen(fen).unwrap();
+        let moves = MoveGenerator::generate_legal_moves(&mut board);
+        for m in &moves {
+            println!("{}", m.to_standard_notation());
+        }
+        assert_eq!(moves.len(), 21);
+
+        let nodes = perft(1, &mut board, true);
+        assert_eq!(nodes, 21);
+    }
+    #[test]
+    fn test_black_pawn_king_check() {
+        let fen = "rnbqkbnr/ppppppp1/8/8/7p/5P2/PPPPPKPP/RNBQ1BNR w kq - 0 3";
+        let mut board = Board::from_fen(fen).unwrap();
+        let moves = MoveGenerator::generate_legal_moves(&mut board);
+        for m in &moves {
+            println!("{}", m.to_standard_notation());
+        }
+        assert_eq!(moves.len(), 20);
+
+        let nodes = perft(1, &mut board, true);
+        assert_eq!(nodes, 20);
+    }
+
+    #[test]
+    fn test_king_move_after_castle() {
+        let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/4P3/1pN2Q1p/PPPBBPPP/R4RK1 w kq - 0 2";
+        let mut board = Board::from_fen(fen).unwrap();
+        let moves = MoveGenerator::generate_legal_moves(&mut board);
+        assert_eq!(moves.len(), 49)
+    }
+
+    #[test]
+    fn test_broken_2() {
+        let fen = "r3k2r/p1ppqpb1/1n2pnN1/1b1P4/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 1 2";
+        let mut board = Board::from_fen(fen).unwrap();
+        assert_eq!(perft(2, &mut board, true), 2034);
+    }
 }

@@ -1,7 +1,7 @@
 use crate::{
     board::Board,
     move_generator::MoveGenerator,
-    piece::{Piece, PieceType},
+    piece::{Color, Piece, PieceType},
 };
 
 pub fn perft(depth: u32, board: &mut Board, is_top_level: bool) -> u64 {
@@ -14,6 +14,13 @@ pub fn perft(depth: u32, board: &mut Board, is_top_level: bool) -> u64 {
 
     (0..moves.len()).for_each(|i| {
         let current_move = moves[i];
+        // println!("{} {}", current_move.from, current_move.to);
+        // if board.piece_at(14, Color::Black).is_some()
+        //     && board.piece_at(14, Color::Black).unwrap() == PieceType::Knight
+        // {
+        //     println!("here")
+        // }
+        // board.print_board();
         board.make_move(current_move);
         let moves_after_move = perft(depth - 1, board, false);
         nodes += moves_after_move;
@@ -35,7 +42,17 @@ pub fn perft(depth: u32, board: &mut Board, is_top_level: bool) -> u64 {
                 moves_after_move
             );
         }
+        // if board.piece_at(14, Color::Black).is_some()
+        //     && board.piece_at(14, Color::Black).unwrap() == PieceType::Knight
+        // {
+        //     println!("here")
+        // }
         board.unmake();
+        // if board.piece_at(14, Color::Black).is_some()
+        //     && board.piece_at(14, Color::Black).unwrap() == PieceType::Knight
+        // {
+        //     println!("here")
+        // }
     });
 
     if is_top_level {

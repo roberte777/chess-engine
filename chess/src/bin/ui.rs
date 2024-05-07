@@ -1,3 +1,4 @@
+fn main() {}
 // use std::io;
 //
 // use chess::{board::Board, piece::Piece};

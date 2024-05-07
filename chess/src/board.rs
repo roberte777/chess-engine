@@ -1,8 +1,11 @@
 use crate::{
     bitboard::BitBoard,
     chess_move::{ChessMove, FLAG_CASTLE, FLAG_EN_PASSANT, FLAG_PROMOTION},
+    move_generator::MoveGenerator,
     piece::{Color, PieceType},
 };
+
+pub const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 #[derive(Debug, Clone)]
 pub struct Board {
@@ -14,7 +17,7 @@ pub struct Board {
     pub half_move_clock: u32,       // Half-move clock for the fifty-move rule
     pub full_move_number: u32,      // Full-move counter, incremented after Black's move
     moves: Vec<ChessMove>,
-    combined: BitBoard,
+    pub combined: BitBoard,
     pinned: BitBoard,
     checkers: BitBoard,
 }
@@ -23,7 +26,6 @@ impl Board {
     pub fn new() -> Self {
         let bitboards = [[BitBoard::default(); 6]; 2];
         let occupied = [BitBoard::default(), BitBoard::default()];
-        let all_occupied = BitBoard::default();
         let en_passant = None;
         let castling_rights = [false; 4];
         let side_to_move = Color::White;
@@ -122,8 +124,83 @@ impl Board {
         board.full_move_number = parts[5]
             .parse::<u32>()
             .map_err(|_| "Invalid FEN: Invalid full-move number".to_owned())?;
+        board.update_attack_and_defense();
 
         Ok(board)
+    }
+    pub fn to_fen(&self) -> String {
+        let mut fen = String::new();
+
+        // Piece placement
+        for rank in (0..8).rev() {
+            let mut empty_squares = 0;
+            for file in 0..8 {
+                let index = rank * 8 + file;
+                let piece = self.find_piece_on_square(index);
+                if piece != '.' {
+                    if empty_squares > 0 {
+                        fen.push_str(&empty_squares.to_string());
+                        empty_squares = 0;
+                    }
+                    fen.push(piece);
+                } else {
+                    empty_squares += 1;
+                }
+            }
+            if empty_squares > 0 {
+                fen.push_str(&empty_squares.to_string());
+            }
+            if rank > 0 {
+                fen.push('/');
+            }
+        }
+
+        // Active color
+        fen.push(' ');
+        fen.push(match self.side_to_move {
+            Color::White => 'w',
+            Color::Black => 'b',
+        });
+
+        // Castling availability
+        fen.push(' ');
+        if self.castling_rights.iter().all(|&v| !v) {
+            fen.push('-');
+        } else {
+            if self.castling_rights[0] {
+                fen.push('K');
+            }
+            if self.castling_rights[1] {
+                fen.push('Q');
+            }
+            if self.castling_rights[2] {
+                fen.push('k');
+            }
+            if self.castling_rights[3] {
+                fen.push('q');
+            }
+        }
+
+        // En passant target square
+        fen.push(' ');
+        if let Some(square) = self.en_passant {
+            let file = (square % 8) as u8 + b'a';
+            let rank = (square / 8) as u8 + b'1';
+            fen.push(file as char);
+            fen.push(rank as char);
+        } else {
+            fen.push('-');
+        }
+
+        // Half-move clock
+        fen.push(' ');
+        fen.push_str(&self.half_move_clock.to_string());
+
+        // Full-move number
+        fen.push(' ');
+        fen.push_str(&self.full_move_number.to_string());
+
+        fen
     }
 
     fn set_piece(&mut self, index: usize, piece_type: PieceType, color: Color) {
@@ -184,6 +261,10 @@ impl Board {
         '.'
     }
     pub fn make_move(&mut self, mut m: ChessMove) {
+        // println!("making move: {:?}", m);
+        // println!("All moves: {:?}", self.moves);
+        // println!("Fen: {}", self.to_fen());
+        // self.print_board();
         // Store the castling rights before the move
         m.old_castling_rights = self.castling_rights;
         m.old_en_passant_square = self.en_passant;
@@ -327,6 +408,10 @@ impl Board {
     pub fn unmake(&mut self) {
         self.side_to_move = self.side_to_move.opposite();
         let last_move = self.moves.pop().unwrap();
+        // println!("Unmaking move: {:?}", last_move);
+        // println!("All moves: {:?}", self.moves);
+        // println!("Fen: {}", self.to_fen());
+        // self.print_board();
         let piece = self.piece_at(last_move.to, self.side_to_move).unwrap();
         self.move_piece(last_move.to, last_move.from, piece);
         // Handle special moves
@@ -415,6 +500,58 @@ impl Board {
 
         // Reset and update pin and checker information
         // self.update_pinned_and_checkers();
+    }
+    /// Checks if a particular square is attacked by any piece of the specified color.
+    pub fn is_square_attacked(&self, square: u8, attacker_color: Color) -> bool {
+        let opponent_pieces = self.bitboards[attacker_color as usize];
+        let square_bit = 1u64 << square;
+
+        // Check attacks from pawns
+        if MoveGenerator::pawn_attacks(square, attacker_color).0
+            & opponent_pieces[PieceType::Pawn as usize].0
+            != 0
+        {
+            return true;
+        }
+
+        // Check attacks from knights
+        if MoveGenerator::knight_attacks(square) & opponent_pieces[PieceType::Knight as usize].0
+            != 0
+        {
+            return true;
+        }
+
+        // Check attacks from kings
+        if MoveGenerator::king_attacks(square) & opponent_pieces[PieceType::King as usize].0 != 0 {
+            return true;
+        }
+
+        // Check attacks from rooks and queens (horizontal and vertical attacks)
+        if (MoveGenerator::rook_attacks(square, self.combined.0)
+            & (opponent_pieces[PieceType::Rook as usize].0
+                | opponent_pieces[PieceType::Queen as usize].0))
+            != 0
+        {
+            return true;
+        }
+
+        // Check attacks from bishops and queens (diagonal attacks)
+        if (MoveGenerator::bishop_attacks(square, self.combined.0)
+            & (opponent_pieces[PieceType::Bishop as usize].0
+                | opponent_pieces[PieceType::Queen as usize].0))
+            != 0
+        {
+            return true;
+        }
+
+        false
+    }
+    /// Checks if the current player's king is in check.
+    pub fn is_king_in_check(&self, color: Color) -> bool {
+        let king_position = self.bitboards[color as usize][PieceType::King as usize]
+            .0
+            .trailing_zeros() as u8;
+        self.is_square_attacked(king_position, color.opposite())
     }
 }
 
@@ -858,5 +995,25 @@ mod tests {
             board.bitboards[Color::Black as usize][PieceType::Pawn as usize].0,
             1 << 36
         );
+    }
+    #[test]
+    fn test_bishop_take_unmake() {
+        let fen = "rnbqkbnr/pppppp1p/8/6p1/8/3P3N/PPP1PPPP/RNBQKB1R w KQkq - 1 2";
+        let mut board = Board::from_fen(fen).unwrap();
+        let board_copy = board.clone();
+        let chess_move = ChessMove {
+            from: 2,
+            to: 38,
+            promoted_piece: None,
+            captured_piece: Some(PieceType::Pawn),
+            flags: 0,
+            old_castling_rights: [true, true, true, true],
+            old_en_passant_square: Some(46),
+            old_halfmove_clock: 0,
+        };
+        board.make_move(chess_move);
+        board.unmake();
+        board.print_board();
+        assert_eq!(board.combined, board_copy.combined);
     }
 }

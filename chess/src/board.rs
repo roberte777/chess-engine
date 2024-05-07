@@ -8,13 +8,15 @@ use crate::{
 pub struct Board {
     pub bitboards: [[BitBoard; 6]; 2], // Indexed by [Color][PieceType]
     pub occupied: [BitBoard; 2],       // Occupied squares for each color
-    pub all_occupied: BitBoard,        // All occupied squares
     pub en_passant: Option<u8>,        // En passant target square, if any
     pub castling_rights: [bool; 4], // Castling rights: [White Kingside, White Queenside, Black Kingside, Black Queenside]
     pub side_to_move: Color,        // Current player to move
     pub half_move_clock: u32,       // Half-move clock for the fifty-move rule
     pub full_move_number: u32,      // Full-move counter, incremented after Black's move
     moves: Vec<ChessMove>,
+    combined: BitBoard,
+    pinned: BitBoard,
+    checkers: BitBoard,
 }
 
 impl Board {
@@ -28,17 +30,22 @@ impl Board {
         let half_move_clock = 0;
         let full_move_number = 1;
         let moves = Vec::new();
+        let combined = BitBoard::default();
+        let pinned = BitBoard::default();
+        let checkers = BitBoard::default();
 
         Board {
             bitboards,
             occupied,
-            all_occupied,
             en_passant,
             castling_rights,
             side_to_move,
             half_move_clock,
             full_move_number,
             moves,
+            combined,
+            pinned,
+            checkers,
         }
     }
     pub fn from_fen(fen: &str) -> Result<Self, String> {
@@ -235,12 +242,10 @@ impl Board {
             }
         }
 
-        // Update the side to move
-        self.side_to_move = self.side_to_move.opposite();
         // Update en passant target
         self.update_en_passant_target(m, piece);
         // Increment the full move number
-        if self.side_to_move == Color::White {
+        if self.side_to_move == Color::Black {
             self.full_move_number += 1;
         }
         // Increment the half-move clock if the move is not a pawn move or a capture
@@ -251,6 +256,9 @@ impl Board {
         }
         // Add the move to the move list
         self.moves.push(m);
+        self.update_attack_and_defense();
+        // Update the side to move
+        self.side_to_move = self.side_to_move.opposite();
     }
 
     fn move_piece(&mut self, from: u8, to: u8, piece: PieceType) {
@@ -341,6 +349,7 @@ impl Board {
         if self.side_to_move == Color::Black {
             self.full_move_number -= 1;
         }
+        self.update_attack_and_defense();
     }
     fn unhandle_castling(&mut self, m: ChessMove) {
         if self.side_to_move == Color::White {
@@ -378,6 +387,34 @@ impl Board {
         let mask = 1 << square;
         self.bitboards[self.side_to_move as usize][PieceType::Queen as usize].0 &= !mask;
         self.bitboards[self.side_to_move as usize][PieceType::Pawn as usize].0 |= mask;
+    }
+    pub fn update_attack_and_defense(&mut self) {
+        // Reset occupied bitboards
+        self.occupied[Color::White as usize] = BitBoard::default();
+        self.occupied[Color::Black as usize] = BitBoard::default();
+
+        // Aggregate occupied squares for each color and compute the combined occupied bitboard
+        for color in [Color::White, Color::Black].iter() {
+            for piece in [
+                PieceType::Pawn,
+                PieceType::Knight,
+                PieceType::Bishop,
+                PieceType::Rook,
+                PieceType::Queen,
+                PieceType::King,
+            ]
+            .iter()
+            {
+                let bitboard = self.bitboards[*color as usize][*piece as usize];
+                self.occupied[*color as usize] |= bitboard;
+            }
+        }
+
+        // Calculate all occupied squares as the union of both color's occupied squares
+        self.combined = self.occupied[Color::White as usize] | self.occupied[Color::Black as usize];
+
+        // Reset and update pin and checker information
+        // self.update_pinned_and_checkers();
     }
 }
 

@@ -12,3 +12,6 @@ chess = { path = "../chess" }
 [[bench]]
 name = "minimax"
 harness = false
+
+[profile.release]
+debug = true

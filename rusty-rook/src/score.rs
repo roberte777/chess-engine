@@ -14,57 +14,105 @@ pub fn score(board: &mut Board) -> i32 {
 }
 
 fn score_piece_value_diff(board: &Board) -> i32 {
+    let piece_values = [
+        (PieceType::Pawn, 100),
+        (PieceType::Knight, 320),
+        (PieceType::Bishop, 330),
+        (PieceType::Rook, 500),
+        (PieceType::Queen, 900),
+        (PieceType::King, 20000),
+    ];
+
     let mut score = 0;
-    for square in 0..64 {
-        let piece = board.piece(square);
-        if piece.is_none() {
-            continue;
+    for (piece_type, value) in &piece_values {
+        let white_pieces = board.bitboards[Color::White as usize][*piece_type as usize].popcnt();
+        let black_pieces = board.bitboards[Color::Black as usize][*piece_type as usize].popcnt();
+        score += value * (white_pieces as i32 - black_pieces as i32);
+    }
+    score
+}
+// fn score_piece_value_diff(board: &Board) -> i32 {
+//     let mut score = 0;
+//     for square in 0..64 {
+//         let piece = board.piece(square);
+//         if piece.is_none() {
+//             continue;
+//         }
+//         let (color, piece) = piece.unwrap();
+//         let piece_value = match piece {
+//             PieceType::Pawn => 100,
+//             PieceType::Knight => 320,
+//             PieceType::Bishop => 330,
+//             PieceType::Rook => 500,
+//             PieceType::Queen => 900,
+//             PieceType::King => 20000,
+//             _ => 0,
+//         };
+//         let color_value = match color {
+//             Color::White => 1,
+//             Color::Black => -1,
+//         };
+//         score += piece_value * color_value;
+//     }
+//     score
+// }
+
+fn score_piece_square(board: &Board) -> i32 {
+    let mut score = 0;
+
+    let piece_types = [
+        (PieceType::Pawn, &PAWN_PIECE_TABLE),
+        (PieceType::Knight, &KNIGHT_PIECE_TABLE),
+        (PieceType::Bishop, &BISHOP_PIECE_TABLE),
+        (PieceType::Rook, &ROOK_PIECE_TABLE),
+        (PieceType::Queen, &QUEEN_PIECE_TABLE),
+        (PieceType::King, &KING_PIECE_TABLE),
+    ];
+
+    for (piece_type, table) in &piece_types {
+        for color in [Color::White, Color::Black].iter() {
+            let color_index = *color as usize;
+            let bitboard = board.bitboards[color_index][*piece_type as usize];
+            let color_multiplier = if *color == Color::White { 1 } else { -1 };
+
+            // Iterate over all pieces of this type and color
+            let mut pieces = bitboard;
+            while pieces.0 != 0 {
+                let square = pieces.to_square(); // Get the square number of the least significant bit
+                score += table[square as usize] * color_multiplier;
+                pieces.0 ^= 1 << square; // Clear the bit for the current piece
+            }
         }
-        let (color, piece) = piece.unwrap();
-        let piece_value = match piece {
-            PieceType::Pawn => 100,
-            PieceType::Knight => 320,
-            PieceType::Bishop => 330,
-            PieceType::Rook => 500,
-            PieceType::Queen => 900,
-            PieceType::King => 20000,
-            _ => 0,
-        };
-        let color_value = match color {
-            Color::White => 1,
-            Color::Black => -1,
-        };
-        score += piece_value * color_value;
     }
     score
 }
 
-fn score_piece_square(board: &Board) -> i32 {
-    let mut score = 0;
-    for square in 0..64 {
-        let piece = board.piece(square);
-        if piece.is_none() {
-            continue;
-        }
-        let (color, piece) = piece.unwrap();
-        let piece_value = match piece {
-            PieceType::Pawn => PAWN_PIECE_TABLE[square as usize],
-            PieceType::Knight => KNIGHT_PIECE_TABLE[square as usize],
-            PieceType::Bishop => BISHOP_PIECE_TABLE[square as usize],
-            PieceType::Rook => ROOK_PIECE_TABLE[square as usize],
-            PieceType::Queen => QUEEN_PIECE_TABLE[square as usize],
-            PieceType::King => KING_PIECE_TABLE[square as usize],
-            _ => 0,
-        };
-        let color_value = match color {
-            Color::White => 1,
-            Color::Black => -1,
-            _ => 0,
-        };
-        score += piece_value * color_value;
-    }
-    score
-}
+// fn score_piece_square(board: &Board) -> i32 {
+//     let mut score = 0;
+//     for square in 0..64 {
+//         let piece = board.piece(square);
+//         if piece.is_none() {
+//             continue;
+//         }
+//         let (color, piece) = piece.unwrap();
+//         let piece_value = match piece {
+//             PieceType::Pawn => PAWN_PIECE_TABLE[square as usize],
+//             PieceType::Knight => KNIGHT_PIECE_TABLE[square as usize],
+//             PieceType::Bishop => BISHOP_PIECE_TABLE[square as usize],
+//             PieceType::Rook => ROOK_PIECE_TABLE[square as usize],
+//             PieceType::Queen => QUEEN_PIECE_TABLE[square as usize],
+//             PieceType::King => KING_PIECE_TABLE[square as usize],
+//             _ => 0,
+//         };
+//         let color_value = match color {
+//             Color::White => 1,
+//             Color::Black => -1,
+//             _ => 0,
+//         };
+//         score += piece_value * color_value;
+//     }
+//     score
+// }
 
 pub fn minimax(board: &mut Board, depth: u32) -> (i32, Option<ChessMove>) {
     let maximizing = board.side_to_move == Color::White;

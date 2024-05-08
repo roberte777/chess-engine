@@ -1,7 +1,6 @@
 use crate::{
     board::Board,
     move_generator::MoveGenerator,
-    piece::{Color, Piece, PieceType},
 };
 
 pub fn perft(depth: u32, board: &mut Board, is_top_level: bool) -> u64 {

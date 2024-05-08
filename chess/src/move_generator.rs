@@ -86,7 +86,7 @@ impl MoveGenerator {
         let forward_two_steps = forward_one_step * 2;
 
         // Single step forward moves
-        let mut single_moves = (match color {
+        let single_moves = (match color {
             Color::White => bitboard.0 << forward_one_step,
             Color::Black => bitboard.0 >> -forward_one_step,
         }) & not_occupied;

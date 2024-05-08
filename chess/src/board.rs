@@ -261,10 +261,6 @@ impl Board {
         '.'
     }
     pub fn make_move(&mut self, mut m: ChessMove) {
-        // println!("making move: {:?}", m);
-        // println!("All moves: {:?}", self.moves);
-        // println!("Fen: {}", self.to_fen());
-        // self.print_board();
         // Store the castling rights before the move
         m.old_castling_rights = self.castling_rights;
         m.old_en_passant_square = self.en_passant;
@@ -295,20 +291,12 @@ impl Board {
                     } else if m.to == 63 {
                         self.castling_rights[2] = false;
                     }
-                    // if m.to == 0 {
-                    //     self.castling_rights[1] = false;
-                    // }
-                    // // White queen side rook
-                    // else if m.to == 7 {
-                    //     self.castling_rights[0] = false;
-                    // } // White king side rook
                 } else if m.to == 0 {
                     self.castling_rights[1] = false;
                 }
                 // Black queen side rook
                 else if m.to == 7 {
                     self.castling_rights[0] = false;
-                    // self.castling_rights[2] = false;
                 } // Black king side rook
             }
         }
@@ -435,10 +423,6 @@ impl Board {
     pub fn unmake(&mut self) {
         self.side_to_move = self.side_to_move.opposite();
         let last_move = self.moves.pop().unwrap();
-        // println!("Unmaking move: {:?}", last_move);
-        // println!("All moves: {:?}", self.moves);
-        // println!("Fen: {}", self.to_fen());
-        // self.print_board();
         let piece = self.piece_at(last_move.to, self.side_to_move).unwrap();
         self.move_piece(last_move.to, last_move.from, piece);
         // Handle special moves
@@ -530,30 +514,16 @@ impl Board {
     }
     /// Checks if a particular square is attacked by any piece of the specified color.
     pub fn is_square_attacked(&self, square: u8, attacker_color: Color) -> bool {
-        // println!("color {:?}", attacker_color);
         let opponent_pieces = self.bitboards[attacker_color as usize];
-        // println!("square: {}", square);
-        let square_bit = 1u64 << square;
 
-        // Check attacks from pawns
-        // self.print_board();
-        // println!(
-        //     "{}",
-        //     MoveGenerator::pawn_attacks(square, attacker_color.opposite())
-        // );
-        // println!(
-        //     "{}",
-        //     MoveGenerator::pawn_attacks(square, attacker_color.opposite()).0
-        // );
+        // check attacks from pawns
         if MoveGenerator::pawn_attacks(square, attacker_color.opposite()).0
             & opponent_pieces[PieceType::Pawn as usize].0
             != 0
         {
-            // println!("true");
             return true;
         }
 
-        // println!("{}", MoveGenerator::knight_attacks(square));
         // Check attacks from knights
         if MoveGenerator::knight_attacks(square) & opponent_pieces[PieceType::Knight as usize].0
             != 0

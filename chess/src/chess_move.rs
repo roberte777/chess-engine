@@ -21,16 +21,6 @@ impl ChessMove {
     }
 
     pub fn to_standard_notation(&self) -> String {
-        // Check for castling
-        // if self.flags & FLAG_CASTLE != 0 {
-        //     let is_kingside_castling = self.to == 6 || self.to == 62; // Standard kingside castling destinations
-        //     return if is_kingside_castling {
-        //         "O-O".to_string()
-        //     } else {
-        //         "O-O-O".to_string()
-        //     };
-        // }
-
         let mut move_string = format!(
             "{}{}",
             Self::index_to_algebraic(self.from),

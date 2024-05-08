@@ -12,7 +12,6 @@ impl MoveGenerator {
 
         for m in moves.into_iter() {
             board.make_move(m);
-            // board.print_board();
             if !board.is_king_in_check(board.side_to_move.opposite()) {
                 legal_moves.push(m);
             }
@@ -54,7 +53,6 @@ impl MoveGenerator {
         color: Color,
         moves: &mut Vec<ChessMove>,
     ) {
-        // Example: handle move generation for each piece type
         match PieceType::from(piece_type) {
             PieceType::Pawn => Self::generate_pawn_moves(board, bitboard, color, moves),
             PieceType::Knight => Self::generate_knight_moves(board, bitboard, color, moves),
@@ -104,8 +102,8 @@ impl MoveGenerator {
             Color::White => intermediate_single_moves << forward_one_step,
             Color::Black => intermediate_single_moves >> -forward_one_step,
         } & not_occupied; // Now check if the second square is free too
-                          //
-                          // Captures
+
+        // Captures
         let left_captures = match color {
             Color::White => (bitboard.0 & !0x0101010101010101) << 7,
             Color::Black => (bitboard.0 & !0x0101010101010101) >> 9,
@@ -115,11 +113,6 @@ impl MoveGenerator {
             Color::White => (bitboard.0 & !0x8080808080808080) << 9,
             Color::Black => (bitboard.0 & !0x8080808080808080) >> 7,
         } & board.occupied[color.opposite() as usize].0;
-
-        // println!("bitboard: {}", bitboard);
-        // println!("bitboard: {}", board.occupied[color.opposite() as usize]);
-        // println!("left_captures: {}", left_captures);
-        // println!("right_captures: {}", right_captures);
 
         // Generate moves for single and double advances
         Self::generate_pawn_move_list(
@@ -165,46 +158,11 @@ impl MoveGenerator {
             false,
         );
 
-        // if let Some(en_passant_square) = board.en_passant {
-        //     // Calculate the square behind the en passant square based on the color of the pawn that made the two-square move.
-        //     let passed_square = if color == Color::White {
-        //         en_passant_square - 8 // The passed square for White is one rank below the landing square
-        //     } else {
-        //         en_passant_square + 8 // The passed square for Black is one rank above the landing square
-        //     };
-        //
-        //     let passed_target = 1u64 << en_passant_square;
-        //     let file = en_passant_square % 8;
-        //
-        //     // Mask out the edges if the passed square is on a or h file
-        //     let valid_attackers = match file {
-        //         0 => en_passant_square << 1, // Passed square on a-file, attack can only come from b-file
-        //         7 => en_passant_square >> 1, // Passed square on h-file, attack can only come from g-file
-        //         _ => (en_passant_square >> 1 | en_passant_square << 1), // Normal cases
-        //     };
-        //
-        //     let potential_en_passant_attackers = valid_attackers & bitboard.0;
-        //     board.print_board();
-        //     println!("{}", BitBoard::new(potential_en_passant_attackers));
-        //
-        //     // If potential attackers can capture the passed square
-        //     if potential_en_passant_attackers != 0 {
-        //         Self::generate_pawn_move_list(
-        //             potential_en_passant_attackers,
-        //             forward_one_step,
-        //             promotion_rank_mask,
-        //             board,
-        //             moves,
-        //             color,
-        //             true,
-        //         );
-        //     }
-        // }
-
-        // // Handle en passant captures
+        // Handle en passant captures
         if let Some(en_passant_square) = board.en_passant {
             let file = en_passant_square % 8; // 0 is a-file, 7 is h-file
-                                              // Calculate the square behind the en passant square based on the color of the pawn that made the two-square move.
+
+            // Calculate the square behind the en passant square based on the color of the pawn that made the two-square move.
             let passed_square = if color == Color::White {
                 en_passant_square - 8 // The passed square for White is one rank below the landing square
             } else {
@@ -245,16 +203,6 @@ impl MoveGenerator {
 
                     potential_en_passant_attackers &= potential_en_passant_attackers - 1;
                 }
-                // Self::generate_pawn_move_list(
-                //     potential_en_passant_attackers,
-                //     forward_one_step,
-                //     promotion_rank_mask,
-                //     board,
-                //     moves,
-                //     color,
-                //     true,
-                //     true,
-                // );
             }
         }
     }
@@ -680,54 +628,18 @@ impl MoveGenerator {
         let not_a_file = 0xfefefefefefefefe; // ~0x0101010101010101
         let not_h_file = 0x7f7f7f7f7f7f7f7f; // ~0x8080808080808080
 
-        // King can move one square in any direction
-        // Horizontal + vertical
-        // attacks |= (bit >> 1) & not_h_file; // Move right west one
-        // attacks |= (bit << 1) & not_a_file; // Move left east one
-        // attacks |= bit << 8; // Move up
-        // attacks |= bit >> 8; // Move down
-        //
-        // // Diagonal
-        // attacks |= (bit << 7) & not_h_file; // Move up-right
-        // attacks |= (bit << 9) & not_a_file; // Move up-left
-        // attacks |= (bit >> 9) & not_h_file; // Move down-right
-        // attacks |= (bit >> 7) & not_a_file; // Move down-left
-
         attacks = ((bit << 1) & not_a_file) | ((bit >> 1) & not_h_file);
         bit |= attacks;
         attacks |= (bit << 8) | (bit >> 8);
-        // println!("king_attacks: {}", attacks);
 
         attacks
     }
-    // /// Calculates all possible king moves from a given position using bitboards.
-    // pub fn king_attacks(square: u8) -> u64 {
-    //     let mut attacks = 0u64;
-    //     let bit = 1u64 << square;
-    //
-    //     // Generate all possible king moves
-    //     if bit & 0xfe != 0 {
-    //         attacks |= (bit << 1) | (bit >> 1) | (bit << 9) | (bit >> 7);
-    //     }
-    //     if bit & 0x7f != 0 {
-    //         attacks |= (bit << 7) | (bit >> 9) | (bit << 8) | (bit >> 8);
-    //     }
-    //     if bit & 0xff00 != 0 {
-    //         attacks |= (bit << 8) | (bit >> 8);
-    //     }
-    //     if bit & 0x01ff != 0 {
-    //         attacks |= (bit << 9) | (bit >> 9);
-    //     }
-    //
-    //     attacks
-    // }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
         board::{Board, STARTING_FEN},
-        chess_move::ChessMove,
         perft::perft,
     };
 
@@ -769,53 +681,6 @@ mod tests {
         let fen = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
         run_perft_test(fen, vec![44, 1486, 62379, 2_103_487])
     }
-
-    // #[test]
-    // fn test_broken() {
-    //     let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
-    //     let mut board = Board::from_fen(fen).unwrap();
-    //     let moves = vec![
-    //         ChessMove {
-    //             from: 8,
-    //             to: 16,
-    //             captured_piece: None,
-    //             flags: 0,
-    //             old_castling_rights: [true; 4],
-    //             old_en_passant_square: None,
-    //             old_halfmove_clock: 0,
-    //             promoted_piece: None,
-    //         },
-    //         ChessMove {
-    //             from: 23,
-    //             to: 14,
-    //             captured_piece: Some(crate::piece::PieceType::Pawn),
-    //             flags: 0,
-    //             old_castling_rights: [true; 4],
-    //             old_en_passant_square: None,
-    //             old_halfmove_clock: 0,
-    //             promoted_piece: None,
-    //         },
-    //         ChessMove {
-    //             from: 15,
-    //             to: 23,
-    //             captured_piece: None,
-    //             flags: 0,
-    //             old_castling_rights: [true; 4],
-    //             old_en_passant_square: None,
-    //             old_halfmove_clock: 0,
-    //             promoted_piece: None,
-    //         },
-    //     ];
-    //     for mv in moves.clone() {
-    //         board.make_move(mv);
-    //         board.print_board();
-    //     }
-    //     for mv in moves {
-    //         board.unmake();
-    //         board.print_board();
-    //     }
-    //     assert!(false);
-    // }
 
     #[test]
     fn test_not_working() {

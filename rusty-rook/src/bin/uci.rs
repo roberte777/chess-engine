@@ -2,7 +2,7 @@ use std::io::{self, BufRead, Write};
 
 use chess::{
     board::{Board, STARTING_FEN},
-    chess_move::Move,
+    chess_move::ChessMove,
 };
 use rusty_rook::score::minimax_ab;
 
@@ -44,7 +44,7 @@ fn handle_position(board: &mut Board, line: &str) {
         if parts.len() > 3 && parts[2] == "moves" {
             for move_notation in parts[3..].iter() {
                 let mv = parse_move(move_notation);
-                board.make(&mv);
+                board.make_move(mv);
             }
         }
     } else if parts[1] == "fen" {
@@ -56,7 +56,7 @@ fn handle_position(board: &mut Board, line: &str) {
 fn handle_go(board: &mut Board, output: &mut impl Write) {
     let (_, mv) = minimax_ab(board, 6, i32::MIN, i32::MAX);
     if let Some(mv) = mv {
-        println!("{}", board);
+        board.print_board();
         writeln!(output, "bestmove {}", mv.to_standard_notation()).expect("Error writing output");
     } else {
         writeln!(output, "bestmove none").expect("Error writing output");
@@ -67,6 +67,6 @@ fn handle_isready(output: &mut impl Write) {
     writeln!(output, "readyok").expect("Error writing output");
 }
 
-fn parse_move(move_notation: &str) -> Move {
-    Move::from_standard_notation(move_notation)
+fn parse_move(move_notation: &str) -> ChessMove {
+    ChessMove::from_standard_notation(move_notation).unwrap()
 }

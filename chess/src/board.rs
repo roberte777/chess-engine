@@ -20,6 +20,7 @@ pub struct Board {
     pub combined: BitBoard,
     pinned: BitBoard,
     checkers: BitBoard,
+    positions: Vec<BitBoard>,
 }
 
 impl Board {
@@ -35,6 +36,7 @@ impl Board {
         let combined = BitBoard::default();
         let pinned = BitBoard::default();
         let checkers = BitBoard::default();
+        let positions = Vec::new();
 
         Board {
             bitboards,
@@ -48,6 +50,7 @@ impl Board {
             combined,
             pinned,
             checkers,
+            positions,
         }
     }
     pub fn from_fen(fen: &str) -> Result<Self, String> {
@@ -353,6 +356,7 @@ impl Board {
         // Add the move to the move list
         self.moves.push(m);
         self.update_attack_and_defense();
+        self.positions.push(self.combined);
         // Update the side to move
         self.side_to_move = self.side_to_move.opposite();
     }
@@ -446,6 +450,7 @@ impl Board {
             self.full_move_number -= 1;
         }
         self.update_attack_and_defense();
+        self.positions.pop();
     }
     fn unhandle_castling(&mut self, m: ChessMove) {
         if self.side_to_move == Color::White {
@@ -562,6 +567,92 @@ impl Board {
             .0
             .trailing_zeros() as u8;
         self.is_square_attacked(king_position, color.opposite())
+    }
+
+    pub fn piece(&self, square: u8) -> Option<(Color, PieceType)> {
+        for color in [Color::White, Color::Black].iter() {
+            for piece in [
+                PieceType::Pawn,
+                PieceType::Knight,
+                PieceType::Bishop,
+                PieceType::Rook,
+                PieceType::Queen,
+                PieceType::King,
+            ]
+            .iter()
+            {
+                if self.bitboards[*color as usize][*piece as usize].0 & (1 << square) != 0 {
+                    return Some((*color, *piece));
+                }
+            }
+        }
+        None
+    }
+
+    pub fn is_draw(&self) -> bool {
+        self.is_insufficient_material() || self.is_50_move_rule() || self.is_threefold_repetition()
+    }
+    // Check for insufficient material on the board
+    fn is_insufficient_material(&self) -> bool {
+        let mut knight_count = [0, 0];
+        let mut light_squared_bishops = [0, 0];
+        let mut dark_squared_bishops = [0, 0];
+
+        for color in [Color::White, Color::Black].iter() {
+            for piece in [PieceType::Pawn, PieceType::Rook, PieceType::Queen].iter() {
+                if self.bitboards[*color as usize][*piece as usize].0 != 0 {
+                    return false; // Having a pawn, rook, or queen means sufficient material
+                }
+            }
+
+            knight_count[*color as usize] =
+                self.bitboards[*color as usize][PieceType::Knight as usize].popcnt();
+            let bishops = self.bitboards[*color as usize][PieceType::Bishop as usize];
+
+            // Process light and dark square bishops
+            let light_squares = 0x55AA55AA55AA55AAu64; // Represents light colored squares on a chess board
+            let dark_squares = !light_squares; // Represents dark colored squares
+
+            // Use bitwise AND to filter bishops on light and dark squares
+            light_squared_bishops[*color as usize] = BitBoard(bishops.0 & light_squares).popcnt();
+            dark_squared_bishops[*color as usize] = BitBoard(bishops.0 & dark_squares).popcnt();
+        }
+
+        for i in 0..2 {
+            if knight_count[i] > 1 {
+                return false;
+            }
+            if knight_count[i] == 1 && (light_squared_bishops[i] > 0 || dark_squared_bishops[i] > 0)
+            {
+                return false;
+            }
+            if light_squared_bishops[i] > 1 || dark_squared_bishops[i] > 1 {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    // Check for the fifty-move rule
+    fn is_50_move_rule(&self) -> bool {
+        self.half_move_clock >= 100
+    }
+    fn is_threefold_repetition(&self) -> bool {
+        if self.positions.len() < 8 {
+            return false;
+        }
+
+        let mut count = 0;
+        for i in (0..self.positions.len()).rev() {
+            if self.positions[i] == self.positions[self.positions.len() - 1] {
+                count += 1;
+            }
+            if count == 2 {
+                return true;
+            }
+        }
+        false
     }
 }
 
@@ -1025,5 +1116,89 @@ mod tests {
         board.unmake();
         board.print_board();
         assert_eq!(board.combined, board_copy.combined);
+    }
+    #[test]
+    fn insufficient_material_king_vs_king() {
+        let mut board = Board::new();
+        board.bitboards[Color::White as usize][PieceType::King as usize] = BitBoard::from_square(4);
+        board.bitboards[Color::Black as usize][PieceType::King as usize] =
+            BitBoard::from_square(60);
+        assert!(
+            board.is_insufficient_material(),
+            "King vs King should be insufficient material for a draw."
+        );
+    }
+
+    #[test]
+    fn insufficient_material_king_and_bishop_vs_king() {
+        let mut board = Board::new();
+        board.bitboards[Color::White as usize][PieceType::King as usize] = BitBoard::from_square(4);
+        board.bitboards[Color::White as usize][PieceType::Bishop as usize] =
+            BitBoard::from_square(2); // Light square
+        board.bitboards[Color::Black as usize][PieceType::King as usize] =
+            BitBoard::from_square(60);
+        assert!(
+            board.is_insufficient_material(),
+            "King and Bishop vs King should be insufficient material for a draw."
+        );
+    }
+
+    #[test]
+    fn insufficient_material_king_and_knight_vs_king() {
+        let mut board = Board::new();
+        board.bitboards[Color::White as usize][PieceType::King as usize] = BitBoard::from_square(4);
+        board.bitboards[Color::White as usize][PieceType::Knight as usize] =
+            BitBoard::from_square(57);
+        board.bitboards[Color::Black as usize][PieceType::King as usize] =
+            BitBoard::from_square(60);
+        assert!(
+            board.is_insufficient_material(),
+            "King and Knight vs King should be insufficient material for a draw."
+        );
+    }
+
+    #[test]
+    fn insufficient_material_king_and_bishop_vs_king_and_bishop_same_color() {
+        let mut board = Board::new();
+        board.bitboards[Color::White as usize][PieceType::King as usize] = BitBoard::from_square(4);
+        board.bitboards[Color::White as usize][PieceType::Bishop as usize] =
+            BitBoard::from_square(2); // Light square
+        board.bitboards[Color::Black as usize][PieceType::King as usize] =
+            BitBoard::from_square(60);
+        board.bitboards[Color::Black as usize][PieceType::Bishop as usize] =
+            BitBoard::from_square(58); // Light square
+        assert!(board.is_insufficient_material(), "King and Bishop vs King and Bishop on the same colored squares should be insufficient material for a draw.");
+    }
+
+    #[test]
+    fn sufficient_material_king_and_rook_vs_king() {
+        let mut board = Board::new();
+        board.bitboards[Color::White as usize][PieceType::King as usize] = BitBoard::from_square(4);
+        board.bitboards[Color::White as usize][PieceType::Rook as usize] = BitBoard::from_square(7);
+        board.bitboards[Color::Black as usize][PieceType::King as usize] =
+            BitBoard::from_square(60);
+        assert!(
+            !board.is_insufficient_material(),
+            "King and Rook vs King should not be insufficient material for a draw."
+        );
+    }
+    #[test]
+    fn sufficient_material_multiple_knights_and_bishops() {
+        let mut board = Board::new();
+        // White pieces
+        board.bitboards[Color::White as usize][PieceType::King as usize] = BitBoard::from_square(4);
+        board.bitboards[Color::White as usize][PieceType::Knight as usize] =
+            BitBoard::from_square(17) | BitBoard::from_square(32);
+        board.bitboards[Color::White as usize][PieceType::Bishop as usize] =
+            BitBoard::from_square(18) | BitBoard::from_square(33);
+
+        // Black king
+        board.bitboards[Color::Black as usize][PieceType::King as usize] =
+            BitBoard::from_square(60);
+
+        assert!(
+            !board.is_insufficient_material(),
+            "Multiple knights and bishops vs king should not be insufficient material for a draw."
+        );
     }
 }

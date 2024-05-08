@@ -1,7 +1,8 @@
 use chess::{
     board::Board,
-    chess_move::{generate_legal_moves, Move},
-    piece::Piece,
+    chess_move::ChessMove,
+    move_generator::MoveGenerator,
+    piece::{Color, Piece, PieceType},
 };
 
 pub fn score(board: &mut Board) -> i32 {
@@ -15,43 +16,25 @@ pub fn score(board: &mut Board) -> i32 {
 fn score_piece_value_diff(board: &Board) -> i32 {
     let mut score = 0;
     for square in 0..64 {
-        let piece = board.piece_at(square);
+        let piece = board.piece(square);
         if piece.is_none() {
             continue;
         }
-        let piece = piece.unwrap();
-        let piece_value = match Piece::get_type(piece) {
-            Piece::PAWN => 100,
-            Piece::KNIGHT => 320,
-            Piece::BISHOP => 330,
-            Piece::ROOK => 500,
-            Piece::QUEEN => 900,
-            Piece::KING => 20000,
+        let (color, piece) = piece.unwrap();
+        let piece_value = match piece {
+            PieceType::Pawn => 100,
+            PieceType::Knight => 320,
+            PieceType::Bishop => 330,
+            PieceType::Rook => 500,
+            PieceType::Queen => 900,
+            PieceType::King => 20000,
             _ => 0,
         };
-        let color_value = match Piece::get_color(piece) {
-            Piece::WHITE => 1,
-            Piece::BLACK => -1,
-            _ => 0,
+        let color_value = match color {
+            Color::White => 1,
+            Color::Black => -1,
         };
         score += piece_value * color_value;
-    }
-    score
-}
-fn score_mobility(board: &mut Board) -> i32 {
-    let mut score = 0;
-    for square in 0..64 {
-        let piece = board.piece_at(square);
-        if piece.is_none() {
-            continue;
-        }
-        let piece = piece.unwrap();
-        let color = Piece::get_color(piece);
-        if color == Piece::WHITE {
-            score += generate_legal_moves(board).len() as i32;
-        } else {
-            score -= generate_legal_moves(board).len() as i32;
-        }
     }
     score
 }
@@ -59,23 +42,23 @@ fn score_mobility(board: &mut Board) -> i32 {
 fn score_piece_square(board: &Board) -> i32 {
     let mut score = 0;
     for square in 0..64 {
-        let piece = board.piece_at(square);
+        let piece = board.piece(square);
         if piece.is_none() {
             continue;
         }
-        let piece = piece.unwrap();
-        let piece_value = match Piece::get_type(piece) {
-            Piece::PAWN => PAWN_PIECE_TABLE[square],
-            Piece::KNIGHT => KNIGHT_PIECE_TABLE[square],
-            Piece::BISHOP => BISHOP_PIECE_TABLE[square],
-            Piece::ROOK => ROOK_PIECE_TABLE[square],
-            Piece::QUEEN => QUEEN_PIECE_TABLE[square],
-            Piece::KING => KING_PIECE_TABLE[square],
+        let (color, piece) = piece.unwrap();
+        let piece_value = match piece {
+            PieceType::Pawn => PAWN_PIECE_TABLE[square as usize],
+            PieceType::Knight => KNIGHT_PIECE_TABLE[square as usize],
+            PieceType::Bishop => BISHOP_PIECE_TABLE[square as usize],
+            PieceType::Rook => ROOK_PIECE_TABLE[square as usize],
+            PieceType::Queen => QUEEN_PIECE_TABLE[square as usize],
+            PieceType::King => KING_PIECE_TABLE[square as usize],
             _ => 0,
         };
-        let color_value = match Piece::get_color(piece) {
-            Piece::WHITE => 1,
-            Piece::BLACK => -1,
+        let color_value = match color {
+            Color::White => 1,
+            Color::Black => -1,
             _ => 0,
         };
         score += piece_value * color_value;
@@ -83,21 +66,21 @@ fn score_piece_square(board: &Board) -> i32 {
     score
 }
 
-pub fn minimax(board: &mut Board, depth: u32) -> (i32, Option<Move>) {
-    let maximizing = board.color_to_move() == Piece::WHITE;
+pub fn minimax(board: &mut Board, depth: u32) -> (i32, Option<ChessMove>) {
+    let maximizing = board.side_to_move == Color::White;
     if depth == 0 {
         return (score(board), None); // No move to return when depth is 0
     }
     let mut best_move = None;
     let mut best_score = if maximizing { i32::MIN } else { i32::MAX };
-    for mv in generate_legal_moves(board) {
-        if Piece::get_color(mv.start_square) != board.color_to_move() {
+    for mv in MoveGenerator::generate_legal_moves(board) {
+        if board.piece(mv.from).unwrap().0 != board.side_to_move {
             println!("Invalid move: {:?}", mv);
             continue;
         }
-        board.make(&mv);
+        board.make_move(mv);
         let (score, _) = minimax(board, depth - 1);
-        board.undo(&mv);
+        board.unmake();
         if (maximizing && score > best_score) || (!maximizing && score < best_score) {
             best_score = score;
             best_move = Some(mv);
@@ -111,17 +94,17 @@ pub fn minimax_ab(
     depth: u32,
     mut alpha: i32,
     mut beta: i32,
-) -> (i32, Option<Move>) {
-    let maximizing = board.color_to_move() == Piece::WHITE;
+) -> (i32, Option<ChessMove>) {
+    let maximizing = board.side_to_move == Color::White;
     if depth == 0 {
         return (score(board), None); // No move to return when depth is 0
     }
     let mut best_move = None;
     let mut best_score = if maximizing { i32::MIN } else { i32::MAX };
 
-    let mut moves = generate_legal_moves(board);
+    let mut moves = MoveGenerator::generate_legal_moves(board);
     if moves.is_empty() {
-        if board.is_check() {
+        if board.is_king_in_check(board.side_to_move) {
             return (if maximizing { i32::MIN } else { i32::MAX }, None);
         }
         return (0, None);
@@ -136,9 +119,9 @@ pub fn minimax_ab(
     }
 
     for mv in moves {
-        board.make(&mv);
+        board.make_move(mv);
         let (score, _) = minimax_ab(board, depth - 1, alpha, beta);
-        board.undo(&mv);
+        board.unmake();
         if maximizing {
             if score > best_score {
                 best_score = score;
@@ -195,7 +178,7 @@ const KING_PIECE_TABLE: [i32; 64] = [
     10, 30, 20,
 ];
 
-fn order_moves(moves: &mut Vec<Move>) {
+fn order_moves(moves: &mut Vec<ChessMove>) {
     moves.sort_by(|a, b| {
         // Order captures first
         let a_captures = a.captured_piece.is_some();

@@ -7,7 +7,7 @@ pub fn bench_minimaxes(c: &mut Criterion) {
     group.sample_size(10);
     group.bench_function("no prune", |b| {
         b.iter(|| {
-            let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -";
+            let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
             let board = Board::from_fen(fen);
             if board.is_err() {
                 eprintln!("Invalid FEN string: {}", board.err().unwrap());
@@ -21,7 +21,7 @@ pub fn bench_minimaxes(c: &mut Criterion) {
 
     group.bench_function("prune", |b| {
         b.iter(|| {
-            let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -";
+            let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
             let board = Board::from_fen(fen);
             if board.is_err() {
                 eprintln!("Invalid FEN string: {}", board.err().unwrap());

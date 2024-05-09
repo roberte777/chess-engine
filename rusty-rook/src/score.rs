@@ -8,7 +8,6 @@ use chess::{
 pub fn score(board: &mut Board) -> i32 {
     let mut score = 0;
     score += score_piece_value_diff(board);
-    // score += score_mobility(board);
     score += score_piece_square(board);
     score
 }
@@ -31,31 +30,6 @@ fn score_piece_value_diff(board: &Board) -> i32 {
     }
     score
 }
-// fn score_piece_value_diff(board: &Board) -> i32 {
-//     let mut score = 0;
-//     for square in 0..64 {
-//         let piece = board.piece(square);
-//         if piece.is_none() {
-//             continue;
-//         }
-//         let (color, piece) = piece.unwrap();
-//         let piece_value = match piece {
-//             PieceType::Pawn => 100,
-//             PieceType::Knight => 320,
-//             PieceType::Bishop => 330,
-//             PieceType::Rook => 500,
-//             PieceType::Queen => 900,
-//             PieceType::King => 20000,
-//             _ => 0,
-//         };
-//         let color_value = match color {
-//             Color::White => 1,
-//             Color::Black => -1,
-//         };
-//         score += piece_value * color_value;
-//     }
-//     score
-// }
 
 fn score_piece_square(board: &Board) -> i32 {
     let mut score = 0;
@@ -86,33 +60,6 @@ fn score_piece_square(board: &Board) -> i32 {
     }
     score
 }
-
-// fn score_piece_square(board: &Board) -> i32 {
-//     let mut score = 0;
-//     for square in 0..64 {
-//         let piece = board.piece(square);
-//         if piece.is_none() {
-//             continue;
-//         }
-//         let (color, piece) = piece.unwrap();
-//         let piece_value = match piece {
-//             PieceType::Pawn => PAWN_PIECE_TABLE[square as usize],
-//             PieceType::Knight => KNIGHT_PIECE_TABLE[square as usize],
-//             PieceType::Bishop => BISHOP_PIECE_TABLE[square as usize],
-//             PieceType::Rook => ROOK_PIECE_TABLE[square as usize],
-//             PieceType::Queen => QUEEN_PIECE_TABLE[square as usize],
-//             PieceType::King => KING_PIECE_TABLE[square as usize],
-//             _ => 0,
-//         };
-//         let color_value = match color {
-//             Color::White => 1,
-//             Color::Black => -1,
-//             _ => 0,
-//         };
-//         score += piece_value * color_value;
-//     }
-//     score
-// }
 
 pub fn minimax(board: &mut Board, depth: u32) -> (i32, Option<ChessMove>) {
     let maximizing = board.side_to_move == Color::White;

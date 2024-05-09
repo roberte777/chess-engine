@@ -1,758 +1,1198 @@
-use std::fmt::Display;
-use thiserror::Error;
-
 use crate::{
-    chess_move::{check_in_check, generate_legal_moves, Move},
-    piece::Piece,
+    bitboard::BitBoard,
+    chess_move::{ChessMove, FLAG_CASTLE, FLAG_EN_PASSANT, FLAG_PROMOTION},
+    move_generator::MoveGenerator,
+    piece::{Color, PieceType},
 };
+
 pub const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-// first 8 are offsets for north, south, west, east, north-west, south-east, north-east, south-west
-// second 8 are offsets for knight moves
-pub const DIRECTION_OFFSETS: [i32; 16] =
-    [8, -8, -1, 1, 7, -7, 9, -9, 6, -6, 15, -15, 17, -17, 10, -10];
 
-lazy_static! {
-    pub static ref NUM_SQUARES_TO_EDGE: [[usize; 8]; 64] = precomputed_move_data();
-}
-
-#[derive(Error, Debug)]
-pub enum FenParseError {
-    #[error("Invalid piece")]
-    InvalidPiece,
-    #[error("Invalid color")]
-    InvalidColor,
-    #[error("Invalid en passant")]
-    InvalidEnPassant,
-    #[error("Invalid castle rights")]
-    InvalidCastleRights,
-    #[error("Invalid half move clock")]
-    InvalidHalfMoveClock,
-    #[error("Invalid full move number")]
-    InvalidFullMoveNumber,
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Board {
-    squares: [u32; 64],
-    color_to_move: u32,
-    en_passant_square: Option<usize>,
-    en_pasasnt_stack: Vec<Option<usize>>,
-    all_moves: Vec<Move>,
-    castle_rights: CastleRights,
-    position_stack: Vec<[u32; 64]>,
-    half_move_stack: Vec<u32>,
+    pub bitboards: [[BitBoard; 6]; 2], // Indexed by [Color][PieceType]
+    pub occupied: [BitBoard; 2],       // Occupied squares for each color
+    pub en_passant: Option<u8>,        // En passant target square, if any
+    pub castling_rights: [bool; 4], // Castling rights: [White Kingside, White Queenside, Black Kingside, Black Queenside]
+    pub side_to_move: Color,        // Current player to move
+    pub half_move_clock: u32,       // Half-move clock for the fifty-move rule
+    pub full_move_number: u32,      // Full-move counter, incremented after Black's move
+    moves: Vec<ChessMove>,
+    pub combined: BitBoard,
+    pinned: BitBoard,
+    checkers: BitBoard,
+    positions: Vec<BitBoard>,
 }
+
 impl Board {
-    pub fn new() -> Board {
+    pub fn new() -> Self {
+        let bitboards = [[BitBoard::default(); 6]; 2];
+        let occupied = [BitBoard::default(), BitBoard::default()];
+        let en_passant = None;
+        let castling_rights = [false; 4];
+        let side_to_move = Color::White;
+        let half_move_clock = 0;
+        let full_move_number = 1;
+        let moves = Vec::new();
+        let combined = BitBoard::default();
+        let pinned = BitBoard::default();
+        let checkers = BitBoard::default();
+        let positions = Vec::new();
+
         Board {
-            squares: [Piece::NONE; 64],
-            color_to_move: Piece::WHITE,
-            en_passant_square: None,
-            en_pasasnt_stack: vec![None],
-            all_moves: Vec::new(),
-            castle_rights: CastleRights {
-                white_king_side: true,
-                white_queen_side: true,
-                black_king_side: true,
-                black_queen_side: true,
-            },
-            position_stack: Vec::new(),
-            half_move_stack: Vec::new(),
+            bitboards,
+            occupied,
+            en_passant,
+            castling_rights,
+            side_to_move,
+            half_move_clock,
+            full_move_number,
+            moves,
+            combined,
+            pinned,
+            checkers,
+            positions,
         }
     }
-
-    pub fn from_fen(fen: &str) -> Result<Board, FenParseError> {
-        let mut board = Board::new();
-        let mut rank: usize = 7;
-        let mut file: usize = 0;
-        let fen = fen.trim().to_string();
-        let fen_parts: Vec<&str> = fen.split(' ').collect();
-
-        // parse piece placement
-        let pieces_placement = fen_parts.first();
-        if pieces_placement.is_none() {
-            return Err(FenParseError::InvalidPiece);
+    pub fn from_fen(fen: &str) -> Result<Self, String> {
+        let parts: Vec<&str> = fen.split_whitespace().collect();
+        if parts.len() != 6 {
+            return Err("Invalid FEN: Wrong number of parts".to_owned());
         }
 
-        let piece_placement = pieces_placement.unwrap().to_string();
-        for c in piece_placement.chars() {
-            if c == '/' {
-                rank -= 1;
-                file = 0;
-            } else if c.is_ascii_digit() {
-                file += c.to_digit(10).unwrap() as usize;
-            } else {
-                let piece = match c {
-                    'p' => Piece::PAWN | Piece::BLACK,
-                    'n' => Piece::KNIGHT | Piece::BLACK,
-                    'b' => Piece::BISHOP | Piece::BLACK,
-                    'r' => Piece::ROOK | Piece::BLACK,
-                    'q' => Piece::QUEEN | Piece::BLACK,
-                    'k' => Piece::KING | Piece::BLACK,
-                    'P' => Piece::PAWN | Piece::WHITE,
-                    'N' => Piece::KNIGHT | Piece::WHITE,
-                    'B' => Piece::BISHOP | Piece::WHITE,
-                    'R' => Piece::ROOK | Piece::WHITE,
-                    'Q' => Piece::QUEEN | Piece::WHITE,
-                    'K' => Piece::KING | Piece::WHITE,
-                    _ => return Err(FenParseError::InvalidPiece),
-                };
-                board.squares[rank * 8 + file] = piece;
-                file += 1;
-            }
+        let mut board = Board::new(); // Assuming `new` initializes an empty board
+
+        // Parse pieces
+        let ranks: Vec<&str> = parts[0].split('/').collect();
+        if ranks.len() != 8 {
+            return Err("Invalid FEN: Incorrect number of ranks".to_owned());
         }
 
-        // parse color to move
-        let color_string = fen_parts.get(1);
-        if color_string.is_none() {
-            return Err(FenParseError::InvalidColor);
-        }
-        let color_to_move = match *color_string.unwrap() {
-            "w" => Piece::WHITE,
-            "b" => Piece::BLACK,
-            _ => return Err(FenParseError::InvalidColor),
-        };
-
-        // parse castling rights
-        let mut castle_rights = CastleRights {
-            white_king_side: false,
-            white_queen_side: false,
-            black_king_side: false,
-            black_queen_side: false,
-        };
-
-        if fen_parts.get(2).is_none() {
-            return Err(FenParseError::InvalidCastleRights);
-        }
-        if fen_parts[2] != "-" {
-            for c in fen_parts[2].chars() {
-                match c {
-                    'K' => castle_rights.white_king_side = true,
-                    'Q' => castle_rights.white_queen_side = true,
-                    'k' => castle_rights.black_king_side = true,
-                    'q' => castle_rights.black_queen_side = true,
-                    _ => return Err(FenParseError::InvalidCastleRights),
+        for (i, rank) in ranks.iter().enumerate() {
+            let mut file = 0;
+            for ch in rank.chars() {
+                if ch.is_ascii_digit() {
+                    file += ch.to_digit(10).unwrap() as usize;
+                } else {
+                    let color = if ch.is_uppercase() {
+                        Color::White
+                    } else {
+                        Color::Black
+                    };
+                    let piece_type = match ch.to_ascii_lowercase() {
+                        'p' => PieceType::Pawn,
+                        'n' => PieceType::Knight,
+                        'b' => PieceType::Bishop,
+                        'r' => PieceType::Rook,
+                        'q' => PieceType::Queen,
+                        'k' => PieceType::King,
+                        _ => return Err("Invalid FEN: Unknown piece type".to_owned()),
+                    };
+                    let index = (7 - i) * 8 + file;
+                    board.set_piece(index, piece_type, color);
+                    file += 1;
                 }
             }
         }
 
-        // parse en passant square
-        let en_passant_string = fen_parts.get(3);
-        if en_passant_string.is_none() {
-            return Err(FenParseError::InvalidEnPassant);
-        }
-        let en_passant_square = match *en_passant_string.unwrap() {
-            "-" => None,
-            _ => {
-                let en_passant_square =
-                    Piece::standard_notation_to_index(en_passant_string.unwrap()) as usize;
-                if en_passant_square > 63 {
-                    return Err(FenParseError::InvalidEnPassant);
-                }
-                Some(en_passant_square)
+        // Parse active color
+        board.side_to_move = match parts[1] {
+            "w" => Color::White,
+            "b" => Color::Black,
+            _ => return Err("Invalid FEN: Invalid active color".to_owned()),
+        };
+
+        // Parse castling availability
+        board.castling_rights = [false; 4];
+        for ch in parts[2].chars() {
+            match ch {
+                'K' => board.castling_rights[0] = true,
+                'Q' => board.castling_rights[1] = true,
+                'k' => board.castling_rights[2] = true,
+                'q' => board.castling_rights[3] = true,
+                '-' => {}
+                _ => return Err("Invalid FEN: Invalid castling flags".to_owned()),
             }
-        };
+        }
 
-        // parse half move clock
-        let _half_move_clock = match fen_parts.get(4).unwrap_or(&"0").parse::<u32>() {
-            Ok(half_move_clock) => half_move_clock,
-            Err(_) => return Err(FenParseError::InvalidHalfMoveClock),
-        };
+        // En passant target
+        board.en_passant = parts[3]
+            .chars()
+            .nth(0)
+            .and_then(|_sq| square_to_index(parts[3]));
 
-        // parse full move number
-        let _full_move_number = match fen_parts.get(5).unwrap_or(&"0").parse::<u32>() {
-            Ok(full_move_number) => full_move_number,
-            Err(_) => return Err(FenParseError::InvalidFullMoveNumber),
-        };
+        // Half-move and full-move counters
+        board.half_move_clock = parts[4]
+            .parse::<u32>()
+            .map_err(|_| "Invalid FEN: Invalid half-move count".to_owned())?;
+        board.full_move_number = parts[5]
+            .parse::<u32>()
+            .map_err(|_| "Invalid FEN: Invalid full-move number".to_owned())?;
+        board.update_attack_and_defense();
 
-        board.color_to_move = color_to_move;
-        board.en_passant_square = en_passant_square;
-        board.castle_rights = castle_rights;
         Ok(board)
     }
-    pub fn make(&mut self, move_to_make: &Move) -> bool {
-        if move_to_make.start_square == move_to_make.target_square {
-            println!("Illegal move: start square and target square are the same");
-            return false;
-        }
-        if Piece::is_type(
-            self.squares[move_to_make.start_square as usize],
-            Piece::NONE,
-        ) {
-            println!("Illegal move: no piece on start square");
-            println!("{:?}", self.to_string());
-            return false;
-        }
-        if !Piece::is_color(
-            self.squares[move_to_make.start_square as usize],
-            self.color_to_move,
-        ) {
-            println!("Illegal move: piece on start square is not the color to move");
-            println!("{}", self);
-            return false;
-        }
-        let start_square = move_to_make.start_square as usize;
-        let target_square = move_to_make.target_square as usize;
-        let piece = self.squares[start_square];
+    pub fn to_fen(&self) -> String {
+        let mut fen = String::new();
 
-        // check if we need to update castling rights
-        if Piece::is_type(piece, Piece::KING) {
-            if self.color_to_move == Piece::WHITE {
-                self.castle_rights.white_king_side = false;
-                self.castle_rights.white_queen_side = false;
-            } else {
-                self.castle_rights.black_king_side = false;
-                self.castle_rights.black_queen_side = false;
-            }
-        }
-        if Piece::is_type(piece, Piece::ROOK) {
-            if self.color_to_move == Piece::WHITE {
-                if move_to_make.start_square == 0 {
-                    self.castle_rights.white_queen_side = false;
-                } else if move_to_make.start_square == 7 {
-                    self.castle_rights.white_king_side = false;
-                }
-            }
-            //check if black rook is moving
-            else if move_to_make.start_square == 56 {
-                self.castle_rights.black_queen_side = false;
-            } else if move_to_make.start_square == 63 {
-                self.castle_rights.black_king_side = false;
-            }
-        }
-
-        // check if pawn is moving two squares
-        if Piece::is_type(piece, Piece::PAWN)
-            && (target_square as i32 - start_square as i32).abs() == 16
-        {
-            self.en_passant_square = Some((start_square + target_square) / 2);
-        } else {
-            self.en_passant_square = None;
-        }
-        self.en_pasasnt_stack.push(self.en_passant_square);
-        if move_to_make.is_castle {
-            // move king
-            self.squares[start_square] = Piece::NONE;
-            self.squares[target_square] = piece;
-
-            // move rook
-            let rook_start_square = match target_square {
-                2 => 0,
-                6 => 7,
-                58 => 56,
-                62 => 63,
-                _ => {
-                    println!("{}", self);
-                    panic!("Invalid castle move");
-                }
-            };
-            let rook_target_square = match target_square {
-                2 => 3,
-                6 => 5,
-                58 => 59,
-                62 => 61,
-                _ => panic!("Invalid castle move"),
-            };
-            let rook = match self.color_to_move {
-                Piece::WHITE => Piece::ROOK | Piece::WHITE,
-                Piece::BLACK => Piece::ROOK | Piece::BLACK,
-                _ => panic!("Invalid color"),
-            };
-            self.squares[rook_start_square] = Piece::NONE;
-            self.squares[rook_target_square] = rook;
-        } else {
-            // check if captured piece is rook.
-            // if so, update castle rights
-            if move_to_make.captured_piece.is_some() {
-                let captured_piece = move_to_make.captured_piece.unwrap();
-                if Piece::is_type(captured_piece, Piece::ROOK) {
-                    if self.color_to_move == Piece::WHITE {
-                        if move_to_make.target_square == 56 {
-                            self.castle_rights.black_queen_side = false;
-                        } else if move_to_make.target_square == 63 {
-                            self.castle_rights.black_king_side = false;
-                        }
+        // Piece placement
+        for rank in (0..8).rev() {
+            let mut empty_squares = 0;
+            for file in 0..8 {
+                let index = rank * 8 + file;
+                let piece = self.find_piece_on_square(index);
+                if piece != '.' {
+                    if empty_squares > 0 {
+                        fen.push_str(&empty_squares.to_string());
+                        empty_squares = 0;
                     }
-                    //check if black rook is moving
-                    else if move_to_make.target_square == 0 {
-                        self.castle_rights.white_queen_side = false;
-                    } else if move_to_make.target_square == 7 {
-                        self.castle_rights.white_king_side = false;
-                    }
+                    fen.push(piece);
+                } else {
+                    empty_squares += 1;
                 }
             }
-
-            // remove captured piece
-            // this is imoprtant for moves like en passant, where the moving piece
-            // will not overwrite the captured piece
-            if let Some(captured_piece) = move_to_make.captured_piece_square {
-                self.squares[captured_piece] = Piece::NONE;
+            if empty_squares > 0 {
+                fen.push_str(&empty_squares.to_string());
             }
-            self.squares[start_square] = Piece::NONE;
-            self.squares[target_square] = piece;
-            if move_to_make.promoted_piece.is_some() {
-                self.squares[target_square] =
-                    move_to_make.promoted_piece.unwrap() | self.color_to_move;
+            if rank > 0 {
+                fen.push('/');
             }
         }
-        // update color to move
-        self.all_moves.push(*move_to_make);
-        self.position_stack.push(self.squares);
-        // if pawn move or capture, reset half move clock
-        // otherwise, increment half move clock
-        if Piece::is_type(piece, Piece::PAWN) || move_to_make.captured_piece.is_some() {
-            self.half_move_stack.push(0);
+
+        // Active color
+        fen.push(' ');
+        fen.push(match self.side_to_move {
+            Color::White => 'w',
+            Color::Black => 'b',
+        });
+
+        // Castling availability
+        fen.push(' ');
+        if self.castling_rights.iter().all(|&v| !v) {
+            fen.push('-');
         } else {
-            self.half_move_stack
-                .push(self.half_move_stack.last().unwrap_or(&0) + 1);
-        }
-        self.swap_turn();
-        true
-    }
-    pub fn undo(&mut self, move_to_undo: &Move) {
-        // update color to move
-        self.swap_turn();
-        self.all_moves.pop();
-        self.castle_rights = move_to_undo.prev_castle_rights;
-        let start_square = move_to_undo.start_square as usize;
-        let target_square = move_to_undo.target_square as usize;
-        let moved_piece = self.squares[target_square];
-
-        if move_to_undo.is_en_passant {
-            // Move the capturing pawn back to its start square
-            self.squares[start_square] = moved_piece;
-            self.squares[target_square] = Piece::NONE;
-
-            // Restore the captured pawn to its original square
-            let captured_pawn_square = move_to_undo.captured_piece_square.unwrap();
-            self.squares[captured_pawn_square] = move_to_undo.captured_piece.unwrap();
-        } else if move_to_undo.is_castle {
-            // Move the king back to its start square
-            self.squares[start_square] = moved_piece;
-            self.squares[target_square] = Piece::NONE;
-
-            // Move the rook back to its start square
-            let rook_start_square = match target_square {
-                2 => 0,
-                6 => 7,
-                58 => 56,
-                62 => 63,
-                _ => panic!("Invalid castle move"),
-            };
-            let rook_target_square = match target_square {
-                2 => 3,
-                6 => 5,
-                58 => 59,
-                62 => 61,
-                _ => panic!("Invalid castle move"),
-            };
-            let rook = match self.color_to_move {
-                Piece::WHITE => Piece::ROOK | Piece::WHITE,
-                Piece::BLACK => Piece::ROOK | Piece::BLACK,
-                _ => panic!("Invalid color"),
-            };
-            self.squares[rook_start_square] = rook;
-            self.squares[rook_target_square] = Piece::NONE;
-        } else {
-            // For regular moves and captures
-            self.squares[start_square] = moved_piece;
-            self.squares[target_square] = match move_to_undo.captured_piece {
-                Some(piece) => piece,
-                None => Piece::NONE,
-            };
-            if move_to_undo.promoted_piece.is_some() {
-                self.squares[start_square] = Piece::PAWN | self.color_to_move;
+            if self.castling_rights[0] {
+                fen.push('K');
+            }
+            if self.castling_rights[1] {
+                fen.push('Q');
+            }
+            if self.castling_rights[2] {
+                fen.push('k');
+            }
+            if self.castling_rights[3] {
+                fen.push('q');
             }
         }
-        self.en_pasasnt_stack.pop();
-        self.position_stack.pop();
-        self.half_move_stack.pop();
-        self.en_passant_square = *self.en_pasasnt_stack.last().unwrap();
-    }
 
-    fn swap_turn(&mut self) {
-        if self.color_to_move == Piece::WHITE {
-            self.color_to_move = Piece::BLACK;
+        // En passant target square
+        fen.push(' ');
+        if let Some(square) = self.en_passant {
+            let file = (square % 8) as u8 + b'a';
+            let rank = (square / 8) as u8 + b'1';
+            fen.push(file as char);
+            fen.push(rank as char);
         } else {
-            self.color_to_move = Piece::WHITE;
+            fen.push('-');
         }
+
+        // Half-move clock
+        fen.push(' ');
+        fen.push_str(&self.half_move_clock.to_string());
+
+        // Full-move number
+        fen.push(' ');
+        fen.push_str(&self.full_move_number.to_string());
+
+        fen
     }
 
-    pub fn can_castle_kingside(&self) -> bool {
-        if self.color_to_move == Piece::WHITE {
-            return self.castle_rights.white_king_side;
+    fn set_piece(&mut self, index: usize, piece_type: PieceType, color: Color) {
+        let mut bitboard_index = self.bitboards[color as usize][piece_type as usize];
+        bitboard_index.0 |= 1 << index;
+        self.bitboards[color as usize][piece_type as usize] = bitboard_index;
+    }
+    /// Prints the board in a human-readable format.
+    pub fn print_board(&self) {
+        println!("  +------------------------+");
+        for rank in (0..8).rev() {
+            print!("{} |", rank + 1); // Print rank numbers on the left side
+            for file in 0..8 {
+                let index = rank * 8 + file;
+                let square = self.find_piece_on_square(index);
+                print!(" {} ", square);
+            }
+            println!("|");
         }
-        self.castle_rights.black_king_side
+        println!("  +------------------------+");
+        println!("    a  b  c  d  e  f  g  h  "); // Print file letters below the board
     }
 
-    pub fn can_castle_queenside(&self) -> bool {
-        if self.color_to_move == Piece::WHITE {
-            return self.castle_rights.white_queen_side;
-        }
-        self.castle_rights.black_queen_side
-    }
+    /// Helper method to find which piece is on a particular square by checking all bitboards.
+    fn find_piece_on_square(&self, index: usize) -> char {
+        let masks = [1u64 << index]; // Bit mask for the square
 
-    pub fn human_move(&mut self, start: usize, end: usize) -> bool {
-        let moves: Vec<Move> = generate_legal_moves(self);
-        let move_to_make = moves.iter().find(|chess_move| {
-            if chess_move.start_square as usize == start && chess_move.target_square as usize == end
+        for (color_idx, color) in [Color::White, Color::Black].iter().enumerate() {
+            for (piece_idx, piece_type) in [
+                PieceType::Pawn,
+                PieceType::Knight,
+                PieceType::Bishop,
+                PieceType::Rook,
+                PieceType::Queen,
+                PieceType::King,
+            ]
+            .iter()
+            .enumerate()
             {
-                return true;
-            }
-            false
-        });
-        if move_to_make.is_none() {
-            return false;
-        }
-        self.make(move_to_make.unwrap())
-    }
-    pub fn human_undo(&mut self) -> bool {
-        let last_move = self.all_moves.last();
-        if last_move.is_none() {
-            return false;
-        }
-        self.undo(&last_move.unwrap().clone());
-        true
-    }
-
-    pub fn piece_at(&self, index: usize) -> Option<u32> {
-        if index > 63 {
-            return None;
-        }
-        Some(self.squares[index])
-    }
-    pub fn is_check(&mut self) -> bool {
-        let king_square = self.squares.iter().position(|&square| {
-            Piece::is_type(square, Piece::KING) && Piece::is_color(square, self.color_to_move)
-        });
-        if king_square.is_none() {
-            return false;
-        }
-        let king_square = king_square.unwrap();
-        check_in_check(self, king_square, self.color_to_move)
-    }
-    fn is_insufficient_material(&self) -> bool {
-        let mut knight_count = [0, 0];
-        let mut bishop_count = [0, 0];
-        let mut bishop_squares = [0, 0]; // Count of bishops on white and black squares
-
-        for &piece in &self.squares {
-            let color = Piece::get_color(piece);
-            let color_index = if color == Piece::WHITE { 0 } else { 1 };
-
-            match Piece::get_type(piece) {
-                Piece::KING => {}
-                Piece::KNIGHT => knight_count[color_index] += 1,
-                Piece::BISHOP => {
-                    bishop_count[color_index] += 1;
-                    let index = self.squares.iter().position(|&x| x == piece).unwrap();
-                    if (index % 8 + index / 8 % 2) % 2 == 0 {
-                        bishop_squares[0] += 1; // Increment for white square bishops
-                    } else {
-                        bishop_squares[1] += 1; // Increment for black square bishops
-                    }
+                if self.bitboards[color_idx][piece_idx].0 & masks[0] != 0 {
+                    return match (piece_type, color) {
+                        (PieceType::Pawn, Color::White) => 'P',
+                        (PieceType::Pawn, Color::Black) => 'p',
+                        (PieceType::Knight, Color::White) => 'N',
+                        (PieceType::Knight, Color::Black) => 'n',
+                        (PieceType::Bishop, Color::White) => 'B',
+                        (PieceType::Bishop, Color::Black) => 'b',
+                        (PieceType::Rook, Color::White) => 'R',
+                        (PieceType::Rook, Color::Black) => 'r',
+                        (PieceType::Queen, Color::White) => 'Q',
+                        (PieceType::Queen, Color::Black) => 'q',
+                        (PieceType::King, Color::White) => 'K',
+                        (PieceType::King, Color::Black) => 'k',
+                    };
                 }
-                _ => {
-                    if piece != Piece::NONE {
-                        return false;
+            }
+        }
+        '.'
+    }
+    pub fn make_move(&mut self, mut m: ChessMove) {
+        // Store the castling rights before the move
+        m.old_castling_rights = self.castling_rights;
+        m.old_en_passant_square = self.en_passant;
+        m.old_halfmove_clock = self.half_move_clock;
+        self.en_passant = None;
+
+        // Special move handling before the actual move (for castling)
+        if m.flags & FLAG_CASTLE != 0 {
+            self.handle_castling(m);
+        }
+
+        let piece = self.piece_at(m.from, self.side_to_move).unwrap();
+
+        // Update pieces on the board: moving the piece
+        self.move_piece(m.from, m.to, piece);
+
+        // If there is a capture, remove the captured piece
+        if let Some(captured) = self.piece_at(m.to, self.side_to_move.opposite()) {
+            self.remove_piece(m.to, captured);
+        }
+
+        // update castling rights if the captured piece is a rook
+        if let Some(captured) = m.captured_piece {
+            if captured == PieceType::Rook {
+                if self.side_to_move == Color::White {
+                    if m.to == 56 {
+                        self.castling_rights[3] = false;
+                    } else if m.to == 63 {
+                        self.castling_rights[2] = false;
                     }
-                } // Other pieces mean sufficient material
+                } else if m.to == 0 {
+                    self.castling_rights[1] = false;
+                }
+                // Black queen side rook
+                else if m.to == 7 {
+                    self.castling_rights[0] = false;
+                } // Black king side rook
             }
         }
 
-        for i in 0..2 {
-            if knight_count[i] > 1 || bishop_count[i] > 1 {
-                return false; // More than one knight or bishop per side
+        // Handle en passant
+        if m.flags & FLAG_EN_PASSANT != 0 {
+            self.handle_en_passant(m);
+        }
+
+        // Handle promotion
+        if m.flags & FLAG_PROMOTION != 0 {
+            self.promote_pawn(m.to, m.promoted_piece.unwrap()); // Assuming m.piece is the promoted piece type
+        }
+
+        // Update castling rights if the moved piece is a king or rook
+        if piece == PieceType::King {
+            if self.side_to_move == Color::White {
+                self.castling_rights[0] = false; // White king side
+                self.castling_rights[1] = false; // White queen side
+            } else {
+                self.castling_rights[2] = false; // Black king side
+                self.castling_rights[3] = false; // Black queen side
             }
-            if knight_count[i] == 1 && bishop_count[i] == 1 {
-                return false; // Knight + Bishop per side
+        } else if piece == PieceType::Rook {
+            if self.side_to_move == Color::White {
+                if m.from == 0 {
+                    self.castling_rights[1] = false;
+                }
+                // White queen side rook
+                else if m.from == 7 {
+                    self.castling_rights[0] = false;
+                } // White king side rook
+            } else if m.from == 56 {
+                self.castling_rights[3] = false;
+            }
+            // Black queen side rook
+            else if m.from == 63 {
+                self.castling_rights[2] = false;
             }
         }
 
-        true // True if none of the conditions for sufficient material are met
+        // Update en passant target
+        self.update_en_passant_target(m, piece);
+        // Increment the full move number
+        if self.side_to_move == Color::Black {
+            self.full_move_number += 1;
+        }
+        // Increment the half-move clock if the move is not a pawn move or a capture
+        if piece != PieceType::Pawn && m.captured_piece.is_none() {
+            self.half_move_clock += 1;
+        } else {
+            self.half_move_clock = 0;
+        }
+
+        // Add the move to the move list
+        self.moves.push(m);
+        self.update_attack_and_defense();
+        self.positions.push(self.combined);
+        // Update the side to move
+        self.side_to_move = self.side_to_move.opposite();
     }
 
-    fn is_50_move_rule(&self) -> bool {
-        if self.half_move_stack.is_empty() {
-            return false;
-        }
-        *self.half_move_stack.last().unwrap() >= 100
+    fn move_piece(&mut self, from: u8, to: u8, piece: PieceType) {
+        let from_mask = 1 << from;
+        let to_mask = 1 << to;
+        self.bitboards[self.side_to_move as usize][piece as usize].0 &= !from_mask;
+        self.bitboards[self.side_to_move as usize][piece as usize].0 |= to_mask;
     }
 
-    fn is_threefold_repetition(&self) -> bool {
-        if self.position_stack.len() < 8 {
-            return false;
+    fn remove_piece(&mut self, position: u8, piece: PieceType) {
+        let mask = 1 << position;
+        self.bitboards[self.side_to_move.opposite() as usize][piece as usize].0 &= !mask;
+    }
+
+    fn handle_castling(&mut self, m: ChessMove) {
+        if self.side_to_move == Color::White {
+            if m.to == 6 {
+                // e1 to g1 (White Kingside)
+                self.move_piece(7, 5, PieceType::Rook); // Move the rook from h1 to f1
+            } else if m.to == 2 {
+                // e1 to c1 (White Queenside)
+                self.move_piece(0, 3, PieceType::Rook); // Move the rook from a1 to d1
+            }
+        } else if m.to == 62 {
+            // e8 to g8 (Black Kingside)
+            self.move_piece(63, 61, PieceType::Rook); // Move the rook from h8 to f8
+        } else if m.to == 58 {
+            // e8 to c8 (Black Queenside)
+            self.move_piece(56, 59, PieceType::Rook); // Move the rook from a8 to d8
         }
-        let mut count = 0;
-        for i in 0..self.position_stack.len() - 1 {
-            if self.position_stack[i] == self.position_stack[self.position_stack.len() - 1] {
-                count += 1;
+    }
+
+    fn promote_pawn(&mut self, square: u8, new_piece: PieceType) {
+        let mask = 1 << square;
+        self.bitboards[self.side_to_move as usize][PieceType::Pawn as usize].0 &= !mask;
+        self.bitboards[self.side_to_move as usize][new_piece as usize].0 |= mask;
+    }
+    fn handle_en_passant(&mut self, m: ChessMove) {
+        // Assuming the pawn moves to 'm.to' and captures the pawn at 'm.from + 8' or 'm.from - 8'
+        let captured_position = if self.side_to_move == Color::White {
+            m.to - 8
+        } else {
+            m.to + 8
+        };
+        self.remove_piece(captured_position, PieceType::Pawn);
+    }
+    fn update_en_passant_target(&mut self, m: ChessMove, piece: PieceType) {
+        // Reset en passant target at the start of each move
+        self.en_passant = None;
+
+        // Set the en passant target if a pawn moves two squares forward
+        if piece == PieceType::Pawn && ((m.to as i8 - m.from as i8).abs() == 16) {
+            self.en_passant = Some((m.from + m.to) / 2); // Midpoint between from and to
+        }
+    }
+
+    pub fn piece_at(&self, square: u8, color: Color) -> Option<PieceType> {
+        for piece_type in 0..6 {
+            if self.bitboards[color as usize][piece_type].0 & (1 << square) != 0 {
+                return Some(PieceType::from(piece_type));
             }
         }
-        count >= 2
+        None
     }
 
-    /// Returns true if the game is a draw by insufficient material, 50 move rule, or threefold repetition
-    ///
-    /// Note: This method does not generate any moves and is safe to use
-    /// in a chess engine without worrying about performance.
+    pub fn unmake(&mut self) {
+        self.side_to_move = self.side_to_move.opposite();
+        let last_move = self.moves.pop().unwrap();
+        let piece = self.piece_at(last_move.to, self.side_to_move).unwrap();
+        self.move_piece(last_move.to, last_move.from, piece);
+        // Handle special moves
+        if last_move.flags & FLAG_CASTLE != 0 {
+            self.unhandle_castling(last_move);
+        }
+        if last_move.flags & FLAG_PROMOTION != 0 {
+            // Demote the piece back to a pawn and place it at the 'from' location
+            self.demote_pawn(last_move.from, last_move.promoted_piece.unwrap());
+        }
+        if last_move.flags & FLAG_EN_PASSANT != 0 {
+            self.unhandle_en_passant(last_move);
+        } else if let Some(captured) = last_move.captured_piece {
+            self.set_piece(last_move.to.into(), captured, self.side_to_move.opposite());
+        }
+
+        self.en_passant = last_move.old_en_passant_square;
+        self.castling_rights = last_move.old_castling_rights;
+        self.half_move_clock = last_move.old_halfmove_clock;
+        if self.side_to_move == Color::Black {
+            self.full_move_number -= 1;
+        }
+        self.update_attack_and_defense();
+        self.positions.pop();
+    }
+    fn unhandle_castling(&mut self, m: ChessMove) {
+        if self.side_to_move == Color::White {
+            if m.to == 6 {
+                // Move the rook back from f1 to h1
+                self.move_piece(5, 7, PieceType::Rook);
+            } else if m.to == 2 {
+                // Move the rook back from d1 to a1
+                self.move_piece(3, 0, PieceType::Rook);
+            }
+        } else if m.to == 62 {
+            // Move the rook back from f8 to h8
+            self.move_piece(61, 63, PieceType::Rook);
+        } else if m.to == 58 {
+            // Move the rook back from d8 to a8
+            self.move_piece(59, 56, PieceType::Rook);
+        }
+    }
+
+    fn unhandle_en_passant(&mut self, m: ChessMove) {
+        // Re-add the captured pawn at its original position
+        let captured_position = if self.side_to_move == Color::Black {
+            m.to + 8
+        } else {
+            m.to - 8
+        };
+        self.set_piece(
+            captured_position.into(),
+            PieceType::Pawn,
+            self.side_to_move.opposite(),
+        );
+    }
+    fn demote_pawn(&mut self, square: u8, piece: PieceType) {
+        // Replace the promoted piece back to a pawn
+        let mask = 1 << square;
+        self.bitboards[self.side_to_move as usize][piece as usize].0 &= !mask;
+        self.bitboards[self.side_to_move as usize][PieceType::Pawn as usize].0 |= mask;
+    }
+    pub fn update_attack_and_defense(&mut self) {
+        // Reset occupied bitboards
+        self.occupied[Color::White as usize] = BitBoard::default();
+        self.occupied[Color::Black as usize] = BitBoard::default();
+
+        // Aggregate occupied squares for each color and compute the combined occupied bitboard
+        for color in [Color::White, Color::Black].iter() {
+            for piece in [
+                PieceType::Pawn,
+                PieceType::Knight,
+                PieceType::Bishop,
+                PieceType::Rook,
+                PieceType::Queen,
+                PieceType::King,
+            ]
+            .iter()
+            {
+                let bitboard = self.bitboards[*color as usize][*piece as usize];
+                self.occupied[*color as usize] |= bitboard;
+            }
+        }
+
+        // Calculate all occupied squares as the union of both color's occupied squares
+        self.combined = self.occupied[Color::White as usize] | self.occupied[Color::Black as usize];
+
+        // Reset and update pin and checker information
+        // self.update_pinned_and_checkers();
+    }
+    /// Checks if a particular square is attacked by any piece of the specified color.
+    pub fn is_square_attacked(&self, square: u8, attacker_color: Color) -> bool {
+        let opponent_pieces = self.bitboards[attacker_color as usize];
+
+        // check attacks from pawns
+        if MoveGenerator::pawn_attacks(square, attacker_color.opposite()).0
+            & opponent_pieces[PieceType::Pawn as usize].0
+            != 0
+        {
+            return true;
+        }
+
+        // Check attacks from knights
+        if MoveGenerator::knight_attacks(square) & opponent_pieces[PieceType::Knight as usize].0
+            != 0
+        {
+            return true;
+        }
+
+        // Check attacks from kings
+        if MoveGenerator::king_attacks(square) & opponent_pieces[PieceType::King as usize].0 != 0 {
+            return true;
+        }
+
+        // Check attacks from rooks and queens (horizontal and vertical attacks)
+        if (MoveGenerator::rook_attacks(square, self.combined.0)
+            & (opponent_pieces[PieceType::Rook as usize].0
+                | opponent_pieces[PieceType::Queen as usize].0))
+            != 0
+        {
+            return true;
+        }
+
+        // Check attacks from bishops and queens (diagonal attacks)
+        if (MoveGenerator::bishop_attacks(square, self.combined.0)
+            & (opponent_pieces[PieceType::Bishop as usize].0
+                | opponent_pieces[PieceType::Queen as usize].0))
+            != 0
+        {
+            return true;
+        }
+
+        false
+    }
+    /// Checks if the current player's king is in check.
+    pub fn is_king_in_check(&self, color: Color) -> bool {
+        let king_position = self.bitboards[color as usize][PieceType::King as usize]
+            .0
+            .trailing_zeros() as u8;
+        self.is_square_attacked(king_position, color.opposite())
+    }
+
+    pub fn piece(&self, square: u8) -> Option<(Color, PieceType)> {
+        for color in [Color::White, Color::Black].iter() {
+            for piece in [
+                PieceType::Pawn,
+                PieceType::Knight,
+                PieceType::Bishop,
+                PieceType::Rook,
+                PieceType::Queen,
+                PieceType::King,
+            ]
+            .iter()
+            {
+                if self.bitboards[*color as usize][*piece as usize].0 & (1 << square) != 0 {
+                    return Some((*color, *piece));
+                }
+            }
+        }
+        None
+    }
+
     pub fn is_draw(&self) -> bool {
         self.is_insufficient_material() || self.is_50_move_rule() || self.is_threefold_repetition()
     }
+    // Check for insufficient material on the board
+    fn is_insufficient_material(&self) -> bool {
+        let mut knight_count = [0, 0];
+        let mut light_squared_bishops = [0, 0];
+        let mut dark_squared_bishops = [0, 0];
 
-    /// Returns the current state of the game
-    ///
-    /// Note, this method generates all legal moves for the board. If you are using
-    /// this in a chess engine and have already generated legal moves, don't call
-    /// this function as it will be duplicate work and slow down your engine.
-    pub fn game_state(&mut self) -> GameResult {
-        let moves = generate_legal_moves(self);
-        if moves.is_empty() {
-            if self.is_check() {
-                return GameResult::Checkmate;
-            }
-            return GameResult::Stalemate;
-        }
-        if self.is_draw() {
-            return GameResult::Draw;
-        }
-        GameResult::InProgress
-    }
-
-    pub fn castle_rights(&self) -> CastleRights {
-        self.castle_rights
-    }
-
-    pub fn color_to_move(&self) -> u32 {
-        self.color_to_move
-    }
-
-    pub fn squares(&self) -> &[u32; 64] {
-        &self.squares
-    }
-
-    pub fn en_passant_square(&self) -> Option<usize> {
-        self.en_passant_square
-    }
-}
-
-pub enum GameResult {
-    Checkmate,
-    Stalemate,
-    Draw,
-    InProgress,
-}
-
-impl Default for Board {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Display for Board {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut board_string = String::new();
-        board_string += " +---+---+---+---+---+---+---+---+\n";
-        for rank in (0..8).rev() {
-            for file in 0..8 {
-                if file == 0 {
-                    board_string += " | "
-                }
-                let square = self.squares[rank * 8 + file];
-                let piece_char = match Piece::get_type(square) {
-                    Piece::PAWN => 'p',
-                    Piece::KNIGHT => 'n',
-                    Piece::BISHOP => 'b',
-                    Piece::ROOK => 'r',
-                    Piece::QUEEN => 'q',
-                    Piece::KING => 'k',
-                    _ => ' ',
-                };
-                if Piece::is_color(square, Piece::WHITE) {
-                    board_string.push(piece_char.to_ascii_uppercase());
-                } else {
-                    board_string.push(piece_char);
-                }
-                board_string += " | ";
-                if file == 7 {
-                    board_string += &format!("{}", rank + 1);
+        for color in [Color::White, Color::Black].iter() {
+            for piece in [PieceType::Pawn, PieceType::Rook, PieceType::Queen].iter() {
+                if self.bitboards[*color as usize][*piece as usize].0 != 0 {
+                    return false; // Having a pawn, rook, or queen means sufficient material
                 }
             }
-            board_string.push('\n');
-            board_string += " +---+---+---+---+---+---+---+---+";
-            board_string.push('\n');
-            if rank == 0 {
-                board_string += "   a   b   c   d   e   f   g   h\n";
+
+            knight_count[*color as usize] =
+                self.bitboards[*color as usize][PieceType::Knight as usize].popcnt();
+            let bishops = self.bitboards[*color as usize][PieceType::Bishop as usize];
+
+            // Process light and dark square bishops
+            let light_squares = 0x55AA55AA55AA55AAu64; // Represents light colored squares on a chess board
+            let dark_squares = !light_squares; // Represents dark colored squares
+
+            // Use bitwise AND to filter bishops on light and dark squares
+            light_squared_bishops[*color as usize] = BitBoard(bishops.0 & light_squares).popcnt();
+            dark_squared_bishops[*color as usize] = BitBoard(bishops.0 & dark_squares).popcnt();
+        }
+
+        for i in 0..2 {
+            if knight_count[i] > 1 {
+                return false;
+            }
+            if knight_count[i] == 1 && (light_squared_bishops[i] > 0 || dark_squared_bishops[i] > 0)
+            {
+                return false;
+            }
+            if light_squared_bishops[i] > 1 || dark_squared_bishops[i] > 1 {
+                return false;
             }
         }
-        write!(f, "{}", board_string)
-    }
-}
 
-#[derive(Debug, Clone, Copy)]
-pub struct CastleRights {
-    pub white_king_side: bool,
-    pub white_queen_side: bool,
-    pub black_king_side: bool,
-    pub black_queen_side: bool,
-}
-impl CastleRights {
-    pub fn new() -> CastleRights {
-        CastleRights {
-            white_king_side: true,
-            white_queen_side: true,
-            black_king_side: true,
-            black_queen_side: true,
+        true
+    }
+
+    // Check for the fifty-move rule
+    fn is_50_move_rule(&self) -> bool {
+        self.half_move_clock >= 100
+    }
+    fn is_threefold_repetition(&self) -> bool {
+        let mut count = 0;
+        for position in self.positions.iter() {
+            if *position == self.combined {
+                count += 1;
+            }
         }
+        count >= 3
     }
 }
 
-impl Default for CastleRights {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+fn square_to_index(square: &str) -> Option<u8> {
+    let bytes = square.as_bytes();
+    if bytes.len() == 2 {
+        let file = bytes[0] - b'a'; // Convert 'a'-'h' to 0-7
+        let rank = bytes[1] - b'1'; // Convert '1'-'8' to 0-7
 
-fn precomputed_move_data() -> [[usize; 8]; 64] {
-    let mut num_squares_to_edge: [[usize; 8]; 64] = [[0; 8]; 64];
-    for file in 0..8 {
-        for rank in 0..8 {
-            let num_north = 7 - rank;
-            let num_south = rank;
-            let num_east = 7 - file;
-            let num_west = file;
-            let square_index = rank * 8 + file;
-
-            num_squares_to_edge[square_index] = [
-                num_north,
-                num_south,
-                num_west,
-                num_east,
-                std::cmp::min(num_north, num_west),
-                std::cmp::min(num_south, num_east),
-                std::cmp::min(num_north, num_east),
-                std::cmp::min(num_south, num_west),
-            ];
+        if file < 8 && rank < 8 {
+            Some(rank * 8 + file)
+        } else {
+            None
         }
+    } else {
+        None
     }
-    num_squares_to_edge
 }
-
 #[cfg(test)]
 mod tests {
+    use crate::chess_move::FLAG_EN_PASSANT;
+
     use super::*;
+
     #[test]
-    fn test_board_from_fen() {
-        let board = Board::from_fen(STARTING_FEN).expect("Invalid FEN");
-        let squares = [
-            Piece::ROOK | Piece::WHITE,
-            Piece::KNIGHT | Piece::WHITE,
-            Piece::BISHOP | Piece::WHITE,
-            Piece::QUEEN | Piece::WHITE,
-            Piece::KING | Piece::WHITE,
-            Piece::BISHOP | Piece::WHITE,
-            Piece::KNIGHT | Piece::WHITE,
-            Piece::ROOK | Piece::WHITE,
-            Piece::PAWN | Piece::WHITE,
-            Piece::PAWN | Piece::WHITE,
-            Piece::PAWN | Piece::WHITE,
-            Piece::PAWN | Piece::WHITE,
-            Piece::PAWN | Piece::WHITE,
-            Piece::PAWN | Piece::WHITE,
-            Piece::PAWN | Piece::WHITE,
-            Piece::PAWN | Piece::WHITE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::NONE,
-            Piece::PAWN | Piece::BLACK,
-            Piece::PAWN | Piece::BLACK,
-            Piece::PAWN | Piece::BLACK,
-            Piece::PAWN | Piece::BLACK,
-            Piece::PAWN | Piece::BLACK,
-            Piece::PAWN | Piece::BLACK,
-            Piece::PAWN | Piece::BLACK,
-            Piece::PAWN | Piece::BLACK,
-            Piece::ROOK | Piece::BLACK,
-            Piece::KNIGHT | Piece::BLACK,
-            Piece::BISHOP | Piece::BLACK,
-            Piece::QUEEN | Piece::BLACK,
-            Piece::KING | Piece::BLACK,
-            Piece::BISHOP | Piece::BLACK,
-            Piece::KNIGHT | Piece::BLACK,
-            Piece::ROOK | Piece::BLACK,
-        ];
-        assert_eq!(board.squares, squares);
+    fn test_initial_position() {
+        let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+        let board = Board::from_fen(fen).unwrap();
+        assert_eq!(board.side_to_move, Color::White);
+        assert_eq!(board.castling_rights, [true, true, true, true]);
+        assert_eq!(board.en_passant, None);
+        assert_eq!(board.half_move_clock, 0);
+        assert_eq!(board.full_move_number, 1);
+        board.print_board();
+        // Additional checks for piece placement
+    }
+
+    #[test]
+    fn test_position_with_en_passant() {
+        let fen = "rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPP1PPPP/RNBQKBNR b KQkq e6 0 1";
+        let board = Board::from_fen(fen).unwrap();
+        assert_eq!(board.en_passant, Some(square_to_index("e6").unwrap()));
+        assert_eq!(board.half_move_clock, 0);
+        assert_eq!(board.full_move_number, 1);
+        assert_eq!(board.side_to_move, Color::Black);
+        assert_eq!(board.castling_rights, [true, true, true, true]);
+        board.print_board();
+        // Checks for the specific pawn structure
+    }
+
+    #[test]
+    fn test_castling_rights() {
+        let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQ - 0 1";
+        let board = Board::from_fen(fen).unwrap();
+        assert_eq!(board.castling_rights, [true, true, false, false]);
+        board.print_board();
+    }
+
+    #[test]
+    fn test_specific_position() {
+        let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+        let board = Board::from_fen(fen).unwrap();
+        // Assert specific pieces
+        // Assert king positions for castling checks
+        assert_eq!(board.castling_rights, [true, true, true, true]);
+        assert_eq!(board.en_passant, None);
+        assert_eq!(board.half_move_clock, 0);
+        assert_eq!(board.full_move_number, 1);
+        board.print_board();
+    }
+
+    #[test]
+    fn test_invalid_fen() {
+        let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq e3 0"; // Missing move number
+        assert!(Board::from_fen(fen).is_err());
+
+        let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq 0 1"; // Invalid en passant square
+        assert!(Board::from_fen(fen).is_err());
     }
     #[test]
-    fn test_fen_castling() {
-        let board = Board::from_fen("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8")
-            .expect("Invalid FEN");
-        // assert that white can castle kingside and queenside
-        assert!(board.castle_rights.white_king_side);
-        assert!(board.castle_rights.white_queen_side);
-        assert!(!board.castle_rights.black_king_side);
-        assert!(!board.castle_rights.black_queen_side);
-        let board = Board::from_fen("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w - - 1 8")
-            .expect("Invalid FEN");
-        assert!(!board.castle_rights.white_king_side);
-        assert!(!board.castle_rights.white_queen_side);
-        assert!(!board.castle_rights.black_king_side);
-        assert!(!board.castle_rights.black_queen_side);
-        let board = Board::from_fen("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w k - 1 8")
-            .expect("Invalid FEN");
-        assert!(!board.castle_rights.white_king_side);
-        assert!(!board.castle_rights.white_queen_side);
-        assert!(board.castle_rights.black_king_side);
-        assert!(!board.castle_rights.black_queen_side);
+    fn test_standard_move() {
+        let mut board = Board::from_fen("8/8/8/8/8/8/1P6/8 w - - 0 1").unwrap();
+        let move_pawn = ChessMove {
+            from: 9,
+            to: 17,
+            promoted_piece: None,
+            captured_piece: None,
+            flags: 0,
+            old_castling_rights: [false; 4],
+            old_en_passant_square: None,
+            old_halfmove_clock: 0,
+        };
+        board.make_move(move_pawn);
+        assert_eq!(
+            board.bitboards[Color::White as usize][PieceType::Pawn as usize].0,
+            1 << 17
+        );
     }
     #[test]
-    fn test_fen_en_passant() {
-        let board = Board::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - e3 1 2")
-            .expect("Invalid FEN");
-        assert_eq!(board.en_passant_square, Some(20));
-        let board = Board::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - e6 1 2")
-            .expect("Invalid FEN");
-        assert_eq!(board.en_passant_square, Some(44));
-        let board = Board::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 1 2")
-            .expect("Invalid FEN");
-        assert_eq!(board.en_passant_square, None);
+    fn test_capture_move() {
+        let mut board = Board::from_fen("8/8/8/8/1p6/8/1P6/8 w - - 0 1").unwrap();
+        let move_pawn_capture = ChessMove {
+            from: 9,
+            to: 25,
+            promoted_piece: None,
+            captured_piece: Some(PieceType::Pawn),
+            flags: 0,
+            old_castling_rights: [false; 4],
+            old_en_passant_square: None,
+            old_halfmove_clock: 0,
+        };
+        board.make_move(move_pawn_capture);
+        assert_eq!(
+            board.bitboards[Color::White as usize][PieceType::Pawn as usize].0,
+            1 << 25
+        );
+        assert_eq!(
+            board.bitboards[Color::Black as usize][PieceType::Pawn as usize].0,
+            0
+        );
     }
     #[test]
-    fn test_fen_color_to_move() {
-        let board = Board::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b - - 0 0")
-            .expect("Invalid FEN");
-        assert_eq!(board.color_to_move, Piece::BLACK);
-        let board = Board::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 0")
-            .expect("Invalid FEN");
-        assert_eq!(board.color_to_move, Piece::WHITE);
+    fn test_castling_kingside_white() {
+        let mut board = Board::from_fen("8/8/8/8/8/8/8/13K2R w KQ - 0 1").unwrap();
+        let castle_kingside_white = ChessMove {
+            from: 4,
+            to: 6,
+            promoted_piece: None,
+            captured_piece: None,
+            flags: FLAG_CASTLE,
+            old_castling_rights: [true, true, false, false],
+            old_en_passant_square: None,
+            old_halfmove_clock: 0,
+        };
+        board.make_move(castle_kingside_white);
+        assert_eq!(
+            board.bitboards[Color::White as usize][PieceType::King as usize].0,
+            1 << 6
+        );
+        assert_eq!(
+            board.bitboards[Color::White as usize][PieceType::Rook as usize].0,
+            1 << 5
+        );
+        assert!(!board.castling_rights[0]);
+        assert!(!board.castling_rights[1]);
+    }
+    #[test]
+    fn test_castling_queenside_white() {
+        let mut board = Board::from_fen("8/8/8/8/8/8/8/R3K3 w kq - 0 1").unwrap();
+        let castle_queenside_white = ChessMove {
+            from: 4,
+            to: 2,
+            promoted_piece: None,
+            captured_piece: None,
+            flags: FLAG_CASTLE,
+            old_castling_rights: [true, true, false, false],
+            old_en_passant_square: None,
+            old_halfmove_clock: 0,
+        };
+        board.make_move(castle_queenside_white);
+        assert_eq!(
+            board.bitboards[Color::White as usize][PieceType::King as usize].0,
+            1 << 2
+        );
+        assert_eq!(
+            board.bitboards[Color::White as usize][PieceType::Rook as usize].0,
+            1 << 3
+        );
+        assert!(!board.castling_rights[0]);
+        assert!(!board.castling_rights[1]);
+    }
+    #[test]
+    fn test_castling_queenside_black() {
+        let mut board = Board::from_fen("r3k2r/8/8/8/8/8/8/8 b kq - 0 1").unwrap();
+        let castle_queenside_black = ChessMove {
+            from: 60,
+            to: 58,
+            promoted_piece: None,
+            captured_piece: None,
+            flags: FLAG_CASTLE,
+            old_castling_rights: [false, false, true, true],
+            old_en_passant_square: None,
+            old_halfmove_clock: 0,
+        };
+        board.make_move(castle_queenside_black);
+        assert_eq!(
+            board.bitboards[Color::Black as usize][PieceType::King as usize].0,
+            1 << 58
+        );
+        assert_eq!(
+            board.bitboards[Color::Black as usize][PieceType::Rook as usize].0,
+            (1 << 59) | (1 << 63)
+        );
+        assert!(!board.castling_rights[2]);
+        assert!(!board.castling_rights[3]);
+        assert!(!board.castling_rights[0]);
+        assert!(!board.castling_rights[1]);
+    }
+
+    #[test]
+    fn test_castling_kingside_black() {
+        let mut board = Board::from_fen("r3k2r/8/8/8/8/8/8/8 b kq - 0 1").unwrap();
+        let castle_kingside_black = ChessMove {
+            from: 60,
+            to: 62,
+            promoted_piece: None,
+            captured_piece: None,
+            flags: FLAG_CASTLE,
+            old_castling_rights: [false, false, true, true],
+            old_en_passant_square: None,
+            old_halfmove_clock: 0,
+        };
+        board.print_board();
+        board.make_move(castle_kingside_black);
+        board.print_board();
+        assert_eq!(
+            board.bitboards[Color::Black as usize][PieceType::King as usize].0,
+            1 << 62
+        );
+        assert_eq!(
+            board.bitboards[Color::Black as usize][PieceType::Rook as usize].0,
+            (1 << 61) | (1 << 56)
+        );
+        assert!(!board.castling_rights[2]);
+        assert!(!board.castling_rights[3]);
+    }
+    #[test]
+    fn test_removal_castling_rights() {
+        let mut board = Board::from_fen("8/8/8/8/8/8/8/13K2R w KQ - 0 1").unwrap();
+        let castle_kingside_white = ChessMove {
+            from: 7,
+            to: 15,
+            promoted_piece: None,
+            captured_piece: None,
+            flags: 0,
+            old_castling_rights: [true, true, false, false],
+            old_en_passant_square: None,
+            old_halfmove_clock: 0,
+        };
+        board.make_move(castle_kingside_white);
+        assert!(board.castling_rights[1]);
+        assert!(!board.castling_rights[0]);
+    }
+
+    #[test]
+    fn test_promotion_white() {
+        let mut board = Board::from_fen("8/P7/8/8/8/8/8/8 w - - 0 1").unwrap();
+        let promote_queen_white = ChessMove {
+            from: 48,
+            to: 56,
+            promoted_piece: Some(PieceType::Queen),
+            captured_piece: None,
+            flags: FLAG_PROMOTION,
+            old_castling_rights: [false; 4],
+            old_en_passant_square: None,
+            old_halfmove_clock: 0,
+        };
+        board.make_move(promote_queen_white);
+        assert_eq!(
+            board.bitboards[Color::White as usize][PieceType::Queen as usize].0,
+            1 << 56
+        );
+        assert_eq!(
+            board.bitboards[Color::White as usize][PieceType::Pawn as usize].0,
+            0
+        );
+    }
+    #[test]
+    fn test_en_passant_black() {
+        let mut board = Board::from_fen("8/8/8/3Pp3/8/8/8/8 w - d6 0 1").unwrap();
+        board.en_passant = Some(27); // d6
+        let en_passant_black = ChessMove {
+            from: 35,
+            to: 44,
+            promoted_piece: None,
+            captured_piece: Some(PieceType::Pawn),
+            flags: FLAG_EN_PASSANT,
+            old_castling_rights: [false; 4],
+            old_en_passant_square: None,
+            old_halfmove_clock: 0,
+        };
+        board.print_board();
+        board.make_move(en_passant_black);
+        board.print_board();
+        assert_eq!(
+            board.bitboards[Color::Black as usize][PieceType::Pawn as usize].0,
+            0
+        );
+        assert_eq!(
+            board.bitboards[Color::White as usize][PieceType::Pawn as usize].0,
+            1 << 44
+        );
+    }
+    #[test]
+    fn test_unmake_standard_move() {
+        let mut board = Board::from_fen("8/8/8/8/8/8/P7/8 w - - 0 1").unwrap();
+        let move_pawn = ChessMove {
+            from: 8,
+            to: 16,
+            promoted_piece: None,
+            captured_piece: None,
+            flags: 0,
+            old_castling_rights: [false; 4],
+            old_en_passant_square: None,
+            old_halfmove_clock: 0,
+        };
+        board.make_move(move_pawn);
+        assert!(board.moves.len() == 1);
+        board.unmake();
+        assert_eq!(
+            board.bitboards[Color::White as usize][PieceType::Pawn as usize].0,
+            1 << 8
+        );
+        assert_eq!(board.half_move_clock, 0);
+        assert_eq!(board.full_move_number, 1);
+        assert_eq!(board.side_to_move, Color::White);
+        assert_eq!(board.castling_rights, [false; 4]);
+        assert_eq!(board.en_passant, None);
+        assert!(board.moves.is_empty());
+    }
+    #[test]
+    fn test_unmake_capture_move() {
+        let mut board = Board::from_fen("8/8/8/8/8/1p6/P7/8 w - - 10 5").unwrap();
+        let move_pawn_capture = ChessMove {
+            from: 8,
+            to: 17,
+            promoted_piece: None,
+            captured_piece: Some(PieceType::Pawn),
+            flags: 0,
+            old_castling_rights: [false; 4],
+            old_en_passant_square: None,
+            old_halfmove_clock: 0,
+        };
+        board.make_move(move_pawn_capture);
+        board.unmake();
+        assert_eq!(
+            board.bitboards[Color::White as usize][PieceType::Pawn as usize].0,
+            1 << 8
+        );
+        assert_eq!(
+            board.bitboards[Color::Black as usize][PieceType::Pawn as usize].0,
+            1 << 17
+        );
+        assert_eq!(board.half_move_clock, 10);
+        assert_eq!(board.full_move_number, 5);
+        assert_eq!(board.side_to_move, Color::White);
+        assert_eq!(board.castling_rights, [false; 4]);
+        assert_eq!(board.en_passant, None);
+        assert!(board.moves.is_empty());
+    }
+    #[test]
+    fn test_unmake_castling_move() {
+        let mut board = Board::from_fen("8/8/8/8/8/8/8/R3K2R w KQ - 0 1").unwrap();
+        let castle_kingside_white = ChessMove {
+            from: 4,
+            to: 6,
+            promoted_piece: None,
+            captured_piece: None,
+            flags: FLAG_CASTLE,
+            old_castling_rights: [true, true, false, false],
+            old_en_passant_square: None,
+            old_halfmove_clock: 0,
+        };
+        board.print_board();
+        board.make_move(castle_kingside_white);
+        board.print_board();
+        board.unmake();
+        board.print_board();
+        assert_eq!(
+            board.bitboards[Color::White as usize][PieceType::King as usize].0,
+            1 << 4
+        );
+        assert_eq!(
+            board.bitboards[Color::White as usize][PieceType::Rook as usize].0,
+            (1 << 7) | (1 << 0)
+        );
+        assert_eq!(board.half_move_clock, 0);
+        assert_eq!(board.full_move_number, 1);
+        assert_eq!(board.side_to_move, Color::White);
+        assert_eq!(board.castling_rights, [true, true, false, false]);
+        assert_eq!(board.en_passant, None);
+        assert!(board.moves.is_empty());
+    }
+    #[test]
+    fn test_unmake_promotion_move() {
+        let mut board = Board::from_fen("8/P7/8/8/8/8/8/8 w - - 0 1").unwrap();
+        let promote_queen_white = ChessMove {
+            from: 48,
+            to: 56,
+            promoted_piece: Some(PieceType::Queen),
+            captured_piece: None,
+            flags: FLAG_PROMOTION,
+            old_castling_rights: [false; 4],
+            old_en_passant_square: None,
+            old_halfmove_clock: 0,
+        };
+        board.print_board();
+        board.make_move(promote_queen_white);
+        board.print_board();
+        board.unmake();
+        board.print_board();
+        assert_eq!(
+            board.bitboards[Color::White as usize][PieceType::Pawn as usize].0,
+            1 << 48
+        );
+        assert_eq!(
+            board.bitboards[Color::White as usize][PieceType::Queen as usize].0,
+            0
+        );
+        assert_eq!(board.half_move_clock, 0);
+        assert_eq!(board.full_move_number, 1);
+        assert_eq!(board.side_to_move, Color::White);
+        assert_eq!(board.castling_rights, [false; 4]);
+        assert_eq!(board.en_passant, None);
+        assert!(board.moves.is_empty());
+    }
+    #[test]
+    fn test_unmake_en_passant_move() {
+        let mut board = Board::from_fen("8/8/8/3Pp3/8/8/8/8 w - e6 0 1").unwrap();
+        board.en_passant = Some(27); // d6
+        let en_passant_move = ChessMove {
+            from: 35,
+            to: 44,
+            promoted_piece: None,
+            captured_piece: Some(PieceType::Pawn),
+            flags: FLAG_EN_PASSANT,
+            old_castling_rights: [false; 4],
+            old_en_passant_square: None,
+            old_halfmove_clock: 0,
+        };
+        board.print_board();
+        board.make_move(en_passant_move);
+        board.print_board();
+        board.unmake();
+        board.print_board();
+        assert_eq!(
+            board.bitboards[Color::White as usize][PieceType::Pawn as usize].0,
+            1 << 35
+        );
+        assert_eq!(
+            board.bitboards[Color::Black as usize][PieceType::Pawn as usize].0,
+            1 << 36
+        );
+    }
+    #[test]
+    fn test_bishop_take_unmake() {
+        let fen = "rnbqkbnr/pppppp1p/8/6p1/8/3P3N/PPP1PPPP/RNBQKB1R w KQkq - 1 2";
+        let mut board = Board::from_fen(fen).unwrap();
+        let board_copy = board.clone();
+        let chess_move = ChessMove {
+            from: 2,
+            to: 38,
+            promoted_piece: None,
+            captured_piece: Some(PieceType::Pawn),
+            flags: 0,
+            old_castling_rights: [true, true, true, true],
+            old_en_passant_square: Some(46),
+            old_halfmove_clock: 0,
+        };
+        board.make_move(chess_move);
+        board.unmake();
+        board.print_board();
+        assert_eq!(board.combined, board_copy.combined);
+    }
+    #[test]
+    fn insufficient_material_king_vs_king() {
+        let mut board = Board::new();
+        board.bitboards[Color::White as usize][PieceType::King as usize] = BitBoard::from_square(4);
+        board.bitboards[Color::Black as usize][PieceType::King as usize] =
+            BitBoard::from_square(60);
+        assert!(
+            board.is_insufficient_material(),
+            "King vs King should be insufficient material for a draw."
+        );
+    }
+
+    #[test]
+    fn insufficient_material_king_and_bishop_vs_king() {
+        let mut board = Board::new();
+        board.bitboards[Color::White as usize][PieceType::King as usize] = BitBoard::from_square(4);
+        board.bitboards[Color::White as usize][PieceType::Bishop as usize] =
+            BitBoard::from_square(2); // Light square
+        board.bitboards[Color::Black as usize][PieceType::King as usize] =
+            BitBoard::from_square(60);
+        assert!(
+            board.is_insufficient_material(),
+            "King and Bishop vs King should be insufficient material for a draw."
+        );
+    }
+
+    #[test]
+    fn insufficient_material_king_and_knight_vs_king() {
+        let mut board = Board::new();
+        board.bitboards[Color::White as usize][PieceType::King as usize] = BitBoard::from_square(4);
+        board.bitboards[Color::White as usize][PieceType::Knight as usize] =
+            BitBoard::from_square(57);
+        board.bitboards[Color::Black as usize][PieceType::King as usize] =
+            BitBoard::from_square(60);
+        assert!(
+            board.is_insufficient_material(),
+            "King and Knight vs King should be insufficient material for a draw."
+        );
+    }
+
+    #[test]
+    fn insufficient_material_king_and_bishop_vs_king_and_bishop_same_color() {
+        let mut board = Board::new();
+        board.bitboards[Color::White as usize][PieceType::King as usize] = BitBoard::from_square(4);
+        board.bitboards[Color::White as usize][PieceType::Bishop as usize] =
+            BitBoard::from_square(2); // Light square
+        board.bitboards[Color::Black as usize][PieceType::King as usize] =
+            BitBoard::from_square(60);
+        board.bitboards[Color::Black as usize][PieceType::Bishop as usize] =
+            BitBoard::from_square(58); // Light square
+        assert!(board.is_insufficient_material(), "King and Bishop vs King and Bishop on the same colored squares should be insufficient material for a draw.");
+    }
+
+    #[test]
+    fn sufficient_material_king_and_rook_vs_king() {
+        let mut board = Board::new();
+        board.bitboards[Color::White as usize][PieceType::King as usize] = BitBoard::from_square(4);
+        board.bitboards[Color::White as usize][PieceType::Rook as usize] = BitBoard::from_square(7);
+        board.bitboards[Color::Black as usize][PieceType::King as usize] =
+            BitBoard::from_square(60);
+        assert!(
+            !board.is_insufficient_material(),
+            "King and Rook vs King should not be insufficient material for a draw."
+        );
+    }
+    #[test]
+    fn sufficient_material_multiple_knights_and_bishops() {
+        let mut board = Board::new();
+        // White pieces
+        board.bitboards[Color::White as usize][PieceType::King as usize] = BitBoard::from_square(4);
+        board.bitboards[Color::White as usize][PieceType::Knight as usize] =
+            BitBoard::from_square(17) | BitBoard::from_square(32);
+        board.bitboards[Color::White as usize][PieceType::Bishop as usize] =
+            BitBoard::from_square(18) | BitBoard::from_square(33);
+
+        // Black king
+        board.bitboards[Color::Black as usize][PieceType::King as usize] =
+            BitBoard::from_square(60);
+
+        assert!(
+            !board.is_insufficient_material(),
+            "Multiple knights and bishops vs king should not be insufficient material for a draw."
+        );
     }
 }

@@ -1,4 +1,4 @@
-use chess::{board::Board, chess_move::Move, perft::perft};
+use chess::{board::Board, chess_move::ChessMove, perft::perft};
 use std::env;
 
 fn main() {
@@ -44,15 +44,15 @@ fn main() {
     // perform each move on the board
     if let Some(moves) = moves {
         for m in moves {
-            let move_to_make = Move::from_standard_notation(&m);
-            if !board.make(&move_to_make) {
-                eprintln!("Invalid move: {}", m);
-                return;
+            if m.len() != 4 && m.len() != 5 {
+                break;
             }
+            let move_to_make = ChessMove::from_standard_notation(&m, &board).unwrap();
+            board.make_move(move_to_make);
         }
     }
 
-    let start = std::time::Instant::now();
+    // let start = std::time::Instant::now();
     perft(depth, &mut board, true);
-    println!("Time taken: {:?}", start.elapsed());
+    // println!("Time taken: {:?}", start.elapsed());
 }

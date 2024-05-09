@@ -2,27 +2,26 @@ use std::io;
 
 use chess::{
     board::{Board, STARTING_FEN},
-    piece::Piece,
+    move_generator::MoveGenerator,
+    piece::{Color, Piece},
 };
 use rusty_rook::score::minimax_ab;
 
 fn main() {
     let mut board = Board::from_fen(STARTING_FEN).unwrap();
     loop {
-        let turn = if board.color_to_move() == Piece::WHITE {
+        let turn = if board.side_to_move == Color::White {
             "White"
         } else {
             "Black"
         };
         println!("Turn: {}", turn);
-        println!("{}", board);
+        board.print_board();
         // engine to move
-        if board.color_to_move() == Piece::BLACK {
-            let (score, mv) = minimax_ab(&mut board, 6, i32::MIN, i32::MAX);
-            // let (score, mv) = minimax(&mut board, 4);
-            println!("Score: {}", score);
+        if board.side_to_move == Color::Black {
+            let (score, mv) = minimax_ab(&mut board, 6, 0, i32::MIN, i32::MAX);
             if let Some(mv) = mv {
-                board.make(&mv);
+                board.make_move(mv);
             }
             continue;
         }
@@ -35,10 +34,7 @@ fn main() {
         let start_piece = match start_piece {
             Command::Piece(piece) => piece,
             Command::Undo => {
-                let success = board.human_undo();
-                if !success {
-                    println!("Nothing to undo");
-                }
+                board.unmake();
                 continue;
             }
             Command::Unknown => {
@@ -51,10 +47,7 @@ fn main() {
         let end_piece = match end_piece {
             Command::Piece(piece) => piece,
             Command::Undo => {
-                let success = board.human_undo();
-                if !success {
-                    println!("Nothing to undo");
-                }
+                board.unmake();
                 continue;
             }
             Command::Unknown => {
@@ -62,15 +55,21 @@ fn main() {
                 continue;
             }
         };
-        let result = board.human_move(start_piece, end_piece);
-        if !result {
+        let moves = MoveGenerator::generate_legal_moves(&mut board);
+        // pick the move that matches the start and end piece
+        let mv = moves
+            .into_iter()
+            .find(|mv| mv.from == start_piece && mv.to == end_piece);
+        if mv.is_none() {
             println!("Invalid move");
+            continue;
         }
+        let result = board.make_move(mv.unwrap());
     }
 }
 
 enum Command {
-    Piece(usize),
+    Piece(u8),
     Undo,
     Unknown,
 }
@@ -91,7 +90,7 @@ fn ask_for_piece() -> Command {
     Command::Piece(piece.unwrap())
 }
 
-fn convert_standard_chess_notation_to_index(square: &str) -> Result<usize, io::Error> {
+fn convert_standard_chess_notation_to_index(square: &str) -> Result<u8, io::Error> {
     let mut square = square.chars();
     let file = square
         .next()

@@ -2,7 +2,7 @@ use std::io::{self, BufRead, Write};
 
 use chess::{
     board::{Board, STARTING_FEN},
-    chess_move::Move,
+    chess_move::ChessMove,
 };
 use rusty_rook::score::minimax_ab;
 
@@ -43,20 +43,26 @@ fn handle_position(board: &mut Board, line: &str) {
         *board = Board::from_fen(STARTING_FEN).unwrap();
         if parts.len() > 3 && parts[2] == "moves" {
             for move_notation in parts[3..].iter() {
-                let mv = parse_move(move_notation);
-                board.make(&mv);
+                let mv = parse_move(move_notation, board);
+                board.make_move(mv);
             }
         }
     } else if parts[1] == "fen" {
-        let fen: String = parts[2..].join(" ");
+        let fen: String = parts[2..=7].join(" ");
         *board = Board::from_fen(&fen).unwrap();
+        if parts.len() > 8 && parts[8] == "moves" {
+            for move_notation in parts[9..].iter() {
+                let mv = parse_move(move_notation, board);
+                board.make_move(mv);
+            }
+        }
     }
 }
 
 fn handle_go(board: &mut Board, output: &mut impl Write) {
-    let (_, mv) = minimax_ab(board, 6, i32::MIN, i32::MAX);
+    let (_, mv) = minimax_ab(board, 6, 0, i32::MIN, i32::MAX);
     if let Some(mv) = mv {
-        println!("{}", board);
+        board.print_board();
         writeln!(output, "bestmove {}", mv.to_standard_notation()).expect("Error writing output");
     } else {
         writeln!(output, "bestmove none").expect("Error writing output");
@@ -67,6 +73,6 @@ fn handle_isready(output: &mut impl Write) {
     writeln!(output, "readyok").expect("Error writing output");
 }
 
-fn parse_move(move_notation: &str) -> Move {
-    Move::from_standard_notation(move_notation)
+fn parse_move(move_notation: &str, board: &Board) -> ChessMove {
+    ChessMove::from_standard_notation(move_notation, board).unwrap()
 }

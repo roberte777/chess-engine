@@ -137,51 +137,59 @@ pub fn minimax(board: &mut Board, depth: u32) -> (i32, Option<ChessMove>) {
     (best_score, best_move)
 }
 
+const MATE_SCORE: i32 = 100_000;
+
 pub fn minimax_ab(
     board: &mut Board,
     depth: u32,
+    ply: u32,
     mut alpha: i32,
     mut beta: i32,
 ) -> (i32, Option<ChessMove>) {
     let maximizing = board.side_to_move == Color::White;
-    if depth == 0 {
-        return (score(board), None); // No move to return when depth is 0
-    }
     let mut best_move = None;
     let mut best_score = if maximizing { i32::MIN } else { i32::MAX };
 
     let mut moves = MoveGenerator::generate_legal_moves(board);
     if moves.is_empty() {
         if board.is_king_in_check(board.side_to_move) {
-            return (if maximizing { i32::MIN } else { i32::MAX }, None);
+            return (
+                if maximizing {
+                    -MATE_SCORE + ply as i32
+                } else {
+                    MATE_SCORE - ply as i32
+                },
+                None,
+            );
         }
         return (0, None);
     }
     if board.is_draw() {
         return (0, None);
     }
-    order_moves(&mut moves);
 
-    if best_move.is_none() {
-        best_move = Some(moves[0]);
+    if depth == 0 {
+        return (score(board), None); // No move to return when depth is 0
     }
+
+    order_moves(&mut moves);
 
     for mv in moves {
         board.make_move(mv);
-        let (score, _) = minimax_ab(board, depth - 1, alpha, beta);
+        let (score, _) = minimax_ab(board, depth - 1, ply + 1, alpha, beta);
         board.unmake();
         if maximizing {
             if score > best_score {
                 best_score = score;
                 best_move = Some(mv);
             }
-            alpha = std::cmp::max(alpha, best_score);
+            alpha = std::cmp::max(alpha, score);
         } else {
             if score < best_score {
                 best_score = score;
                 best_move = Some(mv);
             }
-            beta = std::cmp::min(beta, best_score);
+            beta = std::cmp::min(beta, score);
         }
         if alpha >= beta {
             break;

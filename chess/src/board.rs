@@ -353,6 +353,7 @@ impl Board {
         } else {
             self.half_move_clock = 0;
         }
+
         // Add the move to the move list
         self.moves.push(m);
         self.update_attack_and_defense();
@@ -639,20 +640,13 @@ impl Board {
         self.half_move_clock >= 100
     }
     fn is_threefold_repetition(&self) -> bool {
-        if self.positions.len() < 8 {
-            return false;
-        }
-
         let mut count = 0;
-        for i in (0..self.positions.len()).rev() {
-            if self.positions[i] == self.positions[self.positions.len() - 1] {
+        for position in self.positions.iter() {
+            if *position == self.combined {
                 count += 1;
             }
-            if count == 2 {
-                return true;
-            }
         }
-        false
+        count >= 3
     }
 }
 

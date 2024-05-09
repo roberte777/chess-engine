@@ -29,7 +29,7 @@ pub fn bench_minimaxes(c: &mut Criterion) {
             }
             let mut board = board.unwrap();
             let depth = 5;
-            minimax_ab(&mut board, depth, i32::MIN, i32::MAX);
+            minimax_ab(&mut board, depth, 0, i32::MIN, i32::MAX);
         })
     });
 }

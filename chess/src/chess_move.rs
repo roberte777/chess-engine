@@ -1,4 +1,4 @@
-use crate::piece::PieceType;
+use crate::{board::Board, piece::PieceType};
 
 #[derive(Clone, Copy, Debug)]
 pub struct ChessMove {
@@ -29,12 +29,11 @@ impl ChessMove {
 
         // Check for promotion
         if let Some(promoted) = self.promoted_piece {
-            move_string.push('=');
             move_string.push(match promoted {
-                PieceType::Queen => 'Q',
-                PieceType::Rook => 'R',
-                PieceType::Bishop => 'B',
-                PieceType::Knight => 'N',
+                PieceType::Queen => 'q',
+                PieceType::Rook => 'r',
+                PieceType::Bishop => 'b',
+                PieceType::Knight => 'n',
                 _ => unreachable!(), // Only these types are valid for promotion
             });
         }
@@ -53,7 +52,7 @@ impl ChessMove {
         rank * 8 + file
     }
 
-    pub fn from_standard_notation(s: &str) -> Option<ChessMove> {
+    pub fn from_standard_notation(s: &str, board: &Board) -> Option<ChessMove> {
         // Castling
         if s == "O-O" || s == "O-O-O" {
             return Some(ChessMove {
@@ -81,24 +80,38 @@ impl ChessMove {
         let mut promoted_piece = None;
         let mut flags = 0;
 
+        // if from piece is a king and the distance is 2, then it is a castle move
+        if board.piece_at(from, board.side_to_move).unwrap() == PieceType::King
+            && (from as i8 - to as i8).abs() == 2
+        {
+            flags |= FLAG_CASTLE;
+        }
+
         // Check for promotion
-        if let Some('=') = chars.next() {
-            let piece_type = chars.next();
-            promoted_piece = Some(match piece_type {
-                Some('Q') => PieceType::Queen,
-                Some('R') => PieceType::Rook,
-                Some('B') => PieceType::Bishop,
-                Some('N') => PieceType::Knight,
+        if let Some(promotion) = chars.next() {
+            promoted_piece = Some(match promotion {
+                'q' => PieceType::Queen,
+                'r' => PieceType::Rook,
+                'b' => PieceType::Bishop,
+                'n' => PieceType::Knight,
                 _ => return None,
             });
             flags |= FLAG_PROMOTION;
+        }
+
+        let captured_piece = board.piece_at(to, board.side_to_move.opposite());
+        if board.piece_at(from, board.side_to_move).unwrap() == PieceType::Pawn
+            && board.en_passant.is_some()
+            && to == board.en_passant.unwrap()
+        {
+            flags |= FLAG_EN_PASSANT;
         }
 
         Some(ChessMove {
             from,
             to,
             promoted_piece,
-            captured_piece: None, // This needs to be set based on the board state.
+            captured_piece: captured_piece, // This needs to be set based on the board state.
             flags,
             old_castling_rights: [false; 4],
             old_en_passant_square: None,

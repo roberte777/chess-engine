@@ -47,7 +47,7 @@ fn main() {
             if m.len() != 4 && m.len() != 5 {
                 break;
             }
-            let move_to_make = ChessMove::from_standard_notation(&m).unwrap();
+            let move_to_make = ChessMove::from_standard_notation(&m, &board).unwrap();
             board.make_move(move_to_make);
         }
     }

@@ -20,8 +20,6 @@ fn main() {
         // engine to move
         if board.side_to_move == Color::Black {
             let (score, mv) = minimax_ab(&mut board, 6, 0, i32::MIN, i32::MAX);
-            // let (score, mv) = minimax(&mut board, 4);
-            println!("Score: {}", score);
             if let Some(mv) = mv {
                 board.make_move(mv);
             }

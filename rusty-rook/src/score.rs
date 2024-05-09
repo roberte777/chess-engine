@@ -69,10 +69,7 @@ pub fn minimax(board: &mut Board, depth: u32) -> (i32, Option<ChessMove>) {
     let mut best_move = None;
     let mut best_score = if maximizing { i32::MIN } else { i32::MAX };
     for mv in MoveGenerator::generate_legal_moves(board) {
-        if board.piece(mv.from).unwrap().0 != board.side_to_move {
-            println!("Invalid move: {:?}", mv);
-            continue;
-        }
+
         board.make_move(mv);
         let (score, _) = minimax(board, depth - 1);
         board.unmake();

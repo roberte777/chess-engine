@@ -185,3 +185,72 @@ fn order_moves(moves: &mut [ChessMove]) {
         b_captures.cmp(&a_captures)
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // This test is to assert no functional changes have occured while I'm working on linting
+    // changes.
+    // These should be deleted once functional tests changes are added.
+    #[test]
+    fn test_score_output_1() {
+        let mut board =
+            Board::from_fen("2b3k1/4pp1p/5np1/Q7/3qP3/5P2/P1PBK1PP/1r3B1R w - - 5 25").unwrap();
+        let (_, mv) = minimax_ab(&mut board, 7, 0, i32::MIN, i32::MAX);
+        let mv = mv.unwrap();
+        assert!(mv.from == 11);
+        assert!(mv.to == 18);
+    }
+    #[test]
+    fn test_score_output_2() {
+        let mut board =
+            Board::from_fen("r2q1rk1/p2npp1p/2Q3p1/5bB1/3bp3/8/PPPNPPPP/R3KB1R w KQ - 0 12")
+                .unwrap();
+        let (_, mv) = minimax_ab(&mut board, 7, 0, i32::MIN, i32::MAX);
+        let mv = mv.unwrap();
+        assert!(mv.from == 38);
+        assert!(mv.to == 47);
+    }
+    #[test]
+    fn test_score_output_3() {
+        let mut board =
+            Board::from_fen("rnbqk2r/pp2ppbp/2p2np1/3p4/3P1B2/2NQ1N2/PPP1PPPP/R3KB1R w KQkq - 2 6")
+                .unwrap();
+        let (_, mv) = minimax_ab(&mut board, 7, 0, i32::MIN, i32::MAX);
+        let mv = mv.unwrap();
+        assert!(mv.from == 29);
+        assert!(mv.to == 38);
+    }
+    #[test]
+    fn test_score_output_4() {
+        let mut board =
+            Board::from_fen("rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2")
+                .unwrap();
+        let (_, mv) = minimax_ab(&mut board, 7, 0, i32::MIN, i32::MAX);
+        let mv = mv.unwrap();
+        println!("{:?}", mv);
+        assert!(mv.from == 59);
+        assert!(mv.to == 45);
+    }
+    #[test]
+    fn test_score_output_5() {
+        let mut board = Board::from_fen(
+            "r1b1k2r/1ppp1pp1/p1n2q1p/3Pp3/2Bb4/P2PBN2/1PP2PPP/R2Q1RK1 b kq - 0 10",
+        )
+        .unwrap();
+        let (_, mv) = minimax_ab(&mut board, 7, 0, i32::MIN, i32::MAX);
+        let mv = mv.unwrap();
+        assert!(mv.from == 27);
+        assert!(mv.to == 9);
+    }
+    #[test]
+    fn test_score_output_6() {
+        let mut board =
+            Board::from_fen("r1b4r/2p2kp1/p1p4p/1pR1q3/4Nb2/P2P1Q2/5PPP/5RK1 b - - 3 20").unwrap();
+        let (_, mv) = minimax_ab(&mut board, 7, 0, i32::MIN, i32::MAX);
+        let mv = mv.unwrap();
+        assert!(mv.from == 58);
+        assert!(mv.to == 30);
+    }
+}

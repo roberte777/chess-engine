@@ -3,7 +3,7 @@ use std::io;
 use chess::{
     board::{Board, STARTING_FEN},
     move_generator::MoveGenerator,
-    piece::{Color, Piece},
+    piece::Color,
 };
 use rusty_rook::score::minimax_ab;
 
@@ -19,7 +19,7 @@ fn main() {
         board.print_board();
         // engine to move
         if board.side_to_move == Color::Black {
-            let (score, mv) = minimax_ab(&mut board, 6, 0, i32::MIN, i32::MAX);
+            let (_, mv) = minimax_ab(&mut board, 6, 0, i32::MIN, i32::MAX);
             if let Some(mv) = mv {
                 board.make_move(mv);
             }
@@ -64,7 +64,7 @@ fn main() {
             println!("Invalid move");
             continue;
         }
-        let result = board.make_move(mv.unwrap());
+        board.make_move(mv.unwrap());
     }
 }
 

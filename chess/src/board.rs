@@ -21,6 +21,7 @@ pub struct Board {
     positions: Vec<BitBoard>,
 }
 
+// Board creation, FEN, and display methods.
 impl Board {
     pub fn new() -> Self {
         let bitboards = [[BitBoard::default(); 6]; 2];
@@ -133,7 +134,7 @@ impl Board {
             let mut empty_squares = 0;
             for file in 0..8 {
                 let index = rank * 8 + file;
-                let piece = self.find_piece_on_square(index);
+                let piece = self.square_to_char(index);
                 if piece != '.' {
                     if empty_squares > 0 {
                         fen.push_str(&empty_squares.to_string());
@@ -200,11 +201,6 @@ impl Board {
         fen
     }
 
-    fn set_piece(&mut self, index: usize, piece_type: PieceType, color: Color) {
-        let mut bitboard_index = self.bitboards[color as usize][piece_type as usize];
-        bitboard_index |= 1 << index;
-        self.bitboards[color as usize][piece_type as usize] = bitboard_index;
-    }
     /// Prints the board in a human-readable format.
     pub fn print_board(&self) {
         println!("  +------------------------+");
@@ -212,7 +208,7 @@ impl Board {
             print!("{} |", rank + 1); // Print rank numbers on the left side
             for file in 0..8 {
                 let index = rank * 8 + file;
-                let square = self.find_piece_on_square(index);
+                let square = self.square_to_char(index);
                 print!(" {} ", square);
             }
             println!("|");
@@ -222,7 +218,8 @@ impl Board {
     }
 
     /// Helper method to find which piece is on a particular square by checking all bitboards.
-    fn find_piece_on_square(&self, index: usize) -> char {
+    /// This is used for display and FEN purposes
+    fn square_to_char(&self, index: usize) -> char {
         let masks = [1u64 << index]; // Bit mask for the square
 
         for (color_idx, color) in [Color::White, Color::Black].iter().enumerate() {
@@ -257,6 +254,86 @@ impl Board {
         }
         '.'
     }
+}
+
+// Methods for board modification
+impl Board {
+    /// Returns the piece on a particular square.
+    /// This function is slower than `piece_at` since it checks all colors and piece types.
+    /// Use `piece_at` if you know the color of the piece.
+    ///
+    /// # Arguments
+    /// * `square` - The square index to check
+    /// * `color` - The color to check for
+    /// * `piece` - The piece type to check for
+    ///
+    /// # Returns
+    /// * `Some(Color, PieceType)` if a piece is found, `None` otherwise
+    ///
+    /// # Example
+    /// ```
+    /// use chess::{Board, Color, PieceType};
+    /// let board = Board::default();
+    /// let piece = board.piece(0);
+    /// assert_eq!(piece, Some((Color::White, PieceType::Rook)));
+    /// ```
+    pub fn piece(&self, square: u8) -> Option<(Color, PieceType)> {
+        for color in [Color::White, Color::Black].iter() {
+            for piece in [
+                PieceType::Pawn,
+                PieceType::Knight,
+                PieceType::Bishop,
+                PieceType::Rook,
+                PieceType::Queen,
+                PieceType::King,
+            ]
+            .iter()
+            {
+                if self.bitboards[*color as usize][*piece as usize] & (1 << square) != 0 {
+                    return Some((*color, *piece));
+                }
+            }
+        }
+        None
+    }
+    /// Returns the piece type at a particular square for a given color.
+    /// This function is faster than `piece` since it only checks for a single color.
+    /// Use for minor performance gains if you know the color.
+    ///
+    /// # Arguments
+    /// * `square` - The square index to check
+    /// * `color` - The color to check for
+    ///
+    /// # Returns
+    /// * `Some(PieceType)` if a piece is found, `None` otherwise
+    ///
+    /// # Example
+    /// ```
+    /// use chess::{Board, Color, PieceType};
+    /// let board = Board::default();
+    /// let piece = board.piece_at(0, Color::White);
+    /// assert_eq!(piece, Some(PieceType::Rook));
+    /// ```
+    pub fn piece_at(&self, square: u8, color: Color) -> Option<PieceType> {
+        for piece_type in 0..6 {
+            if self.bitboards[color as usize][piece_type] & (1 << square) != BitBoard(0) {
+                return Some(PieceType::from(piece_type));
+            }
+        }
+        None
+    }
+
+    /// Checks if the current player's king is in check.
+    pub fn is_king_in_check(&self, color: Color) -> bool {
+        let king_position = self.bitboards[color as usize][PieceType::King as usize].to_square();
+        self.is_square_attacked(king_position, color.opposite())
+    }
+
+    pub fn is_draw(&self) -> bool {
+        self.is_insufficient_material() || self.is_50_move_rule() || self.is_threefold_repetition()
+    }
+
+    /// Make a move on the board.
     pub fn make_move(&mut self, mut m: ChessMove) {
         // Store the castling rights before the move
         m.old_castling_rights = self.castling_rights;
@@ -356,69 +433,6 @@ impl Board {
         self.side_to_move = self.side_to_move.opposite();
     }
 
-    fn move_piece(&mut self, from: u8, to: u8, piece: PieceType) {
-        let from_mask = 1 << from;
-        let to_mask = 1 << to;
-        self.bitboards[self.side_to_move as usize][piece as usize] &= !from_mask;
-        self.bitboards[self.side_to_move as usize][piece as usize] |= to_mask;
-    }
-
-    fn remove_piece(&mut self, position: u8, piece: PieceType) {
-        let mask = 1 << position;
-        self.bitboards[self.side_to_move.opposite() as usize][piece as usize] &= !mask;
-    }
-
-    fn handle_castling(&mut self, m: ChessMove) {
-        if self.side_to_move == Color::White {
-            if m.to == 6 {
-                // e1 to g1 (White Kingside)
-                self.move_piece(7, 5, PieceType::Rook); // Move the rook from h1 to f1
-            } else if m.to == 2 {
-                // e1 to c1 (White Queenside)
-                self.move_piece(0, 3, PieceType::Rook); // Move the rook from a1 to d1
-            }
-        } else if m.to == 62 {
-            // e8 to g8 (Black Kingside)
-            self.move_piece(63, 61, PieceType::Rook); // Move the rook from h8 to f8
-        } else if m.to == 58 {
-            // e8 to c8 (Black Queenside)
-            self.move_piece(56, 59, PieceType::Rook); // Move the rook from a8 to d8
-        }
-    }
-
-    fn promote_pawn(&mut self, square: u8, new_piece: PieceType) {
-        let mask = 1 << square;
-        self.bitboards[self.side_to_move as usize][PieceType::Pawn as usize] &= !mask;
-        self.bitboards[self.side_to_move as usize][new_piece as usize] |= mask;
-    }
-    fn handle_en_passant(&mut self, m: ChessMove) {
-        // Assuming the pawn moves to 'm.to' and captures the pawn at 'm.from + 8' or 'm.from - 8'
-        let captured_position = if self.side_to_move == Color::White {
-            m.to - 8
-        } else {
-            m.to + 8
-        };
-        self.remove_piece(captured_position, PieceType::Pawn);
-    }
-    fn update_en_passant_target(&mut self, m: ChessMove, piece: PieceType) {
-        // Reset en passant target at the start of each move
-        self.en_passant = None;
-
-        // Set the en passant target if a pawn moves two squares forward
-        if piece == PieceType::Pawn && ((m.to as i8 - m.from as i8).abs() == 16) {
-            self.en_passant = Some((m.from + m.to) / 2); // Midpoint between from and to
-        }
-    }
-
-    pub fn piece_at(&self, square: u8, color: Color) -> Option<PieceType> {
-        for piece_type in 0..6 {
-            if self.bitboards[color as usize][piece_type] & (1 << square) != BitBoard(0) {
-                return Some(PieceType::from(piece_type));
-            }
-        }
-        None
-    }
-
     pub fn unmake(&mut self) {
         self.side_to_move = self.side_to_move.opposite();
         let last_move = self.moves.pop().unwrap();
@@ -447,71 +461,7 @@ impl Board {
         self.update_attack_and_defense();
         self.positions.pop();
     }
-    fn unhandle_castling(&mut self, m: ChessMove) {
-        if self.side_to_move == Color::White {
-            if m.to == 6 {
-                // Move the rook back from f1 to h1
-                self.move_piece(5, 7, PieceType::Rook);
-            } else if m.to == 2 {
-                // Move the rook back from d1 to a1
-                self.move_piece(3, 0, PieceType::Rook);
-            }
-        } else if m.to == 62 {
-            // Move the rook back from f8 to h8
-            self.move_piece(61, 63, PieceType::Rook);
-        } else if m.to == 58 {
-            // Move the rook back from d8 to a8
-            self.move_piece(59, 56, PieceType::Rook);
-        }
-    }
 
-    fn unhandle_en_passant(&mut self, m: ChessMove) {
-        // Re-add the captured pawn at its original position
-        let captured_position = if self.side_to_move == Color::Black {
-            m.to + 8
-        } else {
-            m.to - 8
-        };
-        self.set_piece(
-            captured_position.into(),
-            PieceType::Pawn,
-            self.side_to_move.opposite(),
-        );
-    }
-    fn demote_pawn(&mut self, square: u8, piece: PieceType) {
-        // Replace the promoted piece back to a pawn
-        let mask = 1 << square;
-        self.bitboards[self.side_to_move as usize][piece as usize] &= !mask;
-        self.bitboards[self.side_to_move as usize][PieceType::Pawn as usize] |= mask;
-    }
-    pub fn update_attack_and_defense(&mut self) {
-        // Reset occupied bitboards
-        self.occupied[Color::White as usize] = BitBoard::default();
-        self.occupied[Color::Black as usize] = BitBoard::default();
-
-        // Aggregate occupied squares for each color and compute the combined occupied bitboard
-        for color in [Color::White, Color::Black].iter() {
-            for piece in [
-                PieceType::Pawn,
-                PieceType::Knight,
-                PieceType::Bishop,
-                PieceType::Rook,
-                PieceType::Queen,
-                PieceType::King,
-            ]
-            .iter()
-            {
-                let bitboard = self.bitboards[*color as usize][*piece as usize];
-                self.occupied[*color as usize] |= bitboard;
-            }
-        }
-
-        // Calculate all occupied squares as the union of both color's occupied squares
-        self.combined = self.occupied[Color::White as usize] | self.occupied[Color::Black as usize];
-
-        // Reset and update pin and checker information
-        // self.update_pinned_and_checkers();
-    }
     /// Checks if a particular square is attacked by any piece of the specified color.
     pub fn is_square_attacked(&self, square: u8, attacker_color: Color) -> bool {
         let opponent_pieces = self.bitboards[attacker_color as usize];
@@ -555,13 +505,121 @@ impl Board {
 
         false
     }
-    /// Checks if the current player's king is in check.
-    pub fn is_king_in_check(&self, color: Color) -> bool {
-        let king_position = self.bitboards[color as usize][PieceType::King as usize].to_square();
-        self.is_square_attacked(king_position, color.opposite())
+
+    /// Used to set a piece on the board at a particular index.
+    fn set_piece(&mut self, index: usize, piece_type: PieceType, color: Color) {
+        let mut bitboard_index = self.bitboards[color as usize][piece_type as usize];
+        bitboard_index |= 1 << index;
+        self.bitboards[color as usize][piece_type as usize] = bitboard_index;
     }
 
-    pub fn piece(&self, square: u8) -> Option<(Color, PieceType)> {
+    /// Moves a piece from one square to another on the board.
+    fn move_piece(&mut self, from: u8, to: u8, piece: PieceType) {
+        let from_mask = 1 << from;
+        let to_mask = 1 << to;
+        self.bitboards[self.side_to_move as usize][piece as usize] &= !from_mask;
+        self.bitboards[self.side_to_move as usize][piece as usize] |= to_mask;
+    }
+
+    /// Removes a piece from the board at a particular square.
+    fn remove_piece(&mut self, position: u8, piece: PieceType) {
+        let mask = 1 << position;
+        self.bitboards[self.side_to_move.opposite() as usize][piece as usize] &= !mask;
+    }
+
+    fn handle_castling(&mut self, m: ChessMove) {
+        if self.side_to_move == Color::White {
+            if m.to == 6 {
+                // e1 to g1 (White Kingside)
+                self.move_piece(7, 5, PieceType::Rook); // Move the rook from h1 to f1
+            } else if m.to == 2 {
+                // e1 to c1 (White Queenside)
+                self.move_piece(0, 3, PieceType::Rook); // Move the rook from a1 to d1
+            }
+        } else if m.to == 62 {
+            // e8 to g8 (Black Kingside)
+            self.move_piece(63, 61, PieceType::Rook); // Move the rook from h8 to f8
+        } else if m.to == 58 {
+            // e8 to c8 (Black Queenside)
+            self.move_piece(56, 59, PieceType::Rook); // Move the rook from a8 to d8
+        }
+    }
+
+    fn promote_pawn(&mut self, square: u8, new_piece: PieceType) {
+        let mask = 1 << square;
+        self.bitboards[self.side_to_move as usize][PieceType::Pawn as usize] &= !mask;
+        self.bitboards[self.side_to_move as usize][new_piece as usize] |= mask;
+    }
+    fn handle_en_passant(&mut self, m: ChessMove) {
+        // Assuming the pawn moves to 'm.to' and captures the pawn at 'm.from + 8' or 'm.from - 8'
+        let captured_position = if self.side_to_move == Color::White {
+            m.to - 8
+        } else {
+            m.to + 8
+        };
+        self.remove_piece(captured_position, PieceType::Pawn);
+    }
+
+    fn unhandle_castling(&mut self, m: ChessMove) {
+        if self.side_to_move == Color::White {
+            if m.to == 6 {
+                // Move the rook back from f1 to h1
+                self.move_piece(5, 7, PieceType::Rook);
+            } else if m.to == 2 {
+                // Move the rook back from d1 to a1
+                self.move_piece(3, 0, PieceType::Rook);
+            }
+        } else if m.to == 62 {
+            // Move the rook back from f8 to h8
+            self.move_piece(61, 63, PieceType::Rook);
+        } else if m.to == 58 {
+            // Move the rook back from d8 to a8
+            self.move_piece(59, 56, PieceType::Rook);
+        }
+    }
+
+    fn unhandle_en_passant(&mut self, m: ChessMove) {
+        // Re-add the captured pawn at its original position
+        let captured_position = if self.side_to_move == Color::Black {
+            m.to + 8
+        } else {
+            m.to - 8
+        };
+        self.set_piece(
+            captured_position.into(),
+            PieceType::Pawn,
+            self.side_to_move.opposite(),
+        );
+    }
+    fn demote_pawn(&mut self, square: u8, piece: PieceType) {
+        // Replace the promoted piece back to a pawn
+        let mask = 1 << square;
+        self.bitboards[self.side_to_move as usize][piece as usize] &= !mask;
+        self.bitboards[self.side_to_move as usize][PieceType::Pawn as usize] |= mask;
+    }
+
+    /// Updates the en passant target square based on the given move.
+    /// If a pawn moves two squares forward, the en passant target is
+    /// set to the square between the from and to squares.
+    /// Else, the en passant target is reset to None.
+    fn update_en_passant_target(&mut self, m: ChessMove, piece: PieceType) {
+        // Reset en passant target at the start of each move
+        self.en_passant = None;
+
+        // Set the en passant target if a pawn moves two squares forward
+        if piece == PieceType::Pawn && ((m.to as i8 - m.from as i8).abs() == 16) {
+            self.en_passant = Some((m.from + m.to) / 2); // Midpoint between from and to
+        }
+    }
+
+    /// Updates the combined bitboard and the occupied bitboards for each color.
+    /// This should always be called in public exposed methods that modify the board state.
+    fn update_attack_and_defense(&mut self) {
+        // Reset occupied bitboards
+        self.occupied[Color::White as usize] = BitBoard::default();
+        self.occupied[Color::Black as usize] = BitBoard::default();
+
+        // Aggregate occupied squares for each color and compute the combined occupied bitboard
         for color in [Color::White, Color::Black].iter() {
             for piece in [
                 PieceType::Pawn,
@@ -573,17 +631,18 @@ impl Board {
             ]
             .iter()
             {
-                if self.bitboards[*color as usize][*piece as usize] & (1 << square) != 0 {
-                    return Some((*color, *piece));
-                }
+                let bitboard = self.bitboards[*color as usize][*piece as usize];
+                self.occupied[*color as usize] |= bitboard;
             }
         }
-        None
+
+        // Calculate all occupied squares as the union of both color's occupied squares
+        self.combined = self.occupied[Color::White as usize] | self.occupied[Color::Black as usize];
+
+        // Reset and update pin and checker information
+        // self.update_pinned_and_checkers();
     }
 
-    pub fn is_draw(&self) -> bool {
-        self.is_insufficient_material() || self.is_50_move_rule() || self.is_threefold_repetition()
-    }
     // Check for insufficient material on the board
     fn is_insufficient_material(&self) -> bool {
         let mut knight_count = [0, 0];
@@ -643,7 +702,7 @@ impl Board {
 
 impl Default for Board {
     fn default() -> Self {
-        Self::new()
+        Self::from_fen(STARTING_FEN).unwrap()
     }
 }
 

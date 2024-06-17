@@ -4,4 +4,3 @@ members = ["chess", "rusty-rook"]
 
 [profile.release]
 debug = true
-

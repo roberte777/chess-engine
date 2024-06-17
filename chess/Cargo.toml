@@ -4,6 +4,23 @@ version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+bench = false
+
+[[bin]]
+name = "parse"
+path = "src/bin/parse.rs"
+bench = false
+
+[[bin]]
+name = "perft"
+path = "src/bin/perft.rs"
+bench = false
+
+[[bin]]
+name = "ui"
+path = "src/bin/ui.rs"
+bench = false
 
 [dependencies]
 lazy_static = "1.4.0"

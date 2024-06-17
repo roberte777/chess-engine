@@ -1,6 +1,6 @@
 use crate::bitboard::BitBoard;
 use crate::board::Board;
-use crate::chess_move::{ChessMove, FLAG_CASTLE, FLAG_EN_PASSANT, FLAG_PROMOTION};
+use crate::chess_move::ChessMove;
 use crate::piece::{Color, PieceType};
 
 pub struct MoveGenerator;
@@ -115,47 +115,21 @@ impl MoveGenerator {
         } & board.occupied[color.opposite() as usize].0;
 
         // Generate moves for single and double advances
-        Self::generate_pawn_move_list(
-            single_moves,
-            forward_one_step,
-            promotion_rank_mask,
-            board,
-            moves,
-            color,
-            false,
-            false,
-        );
-        Self::generate_pawn_move_list(
-            double_moves,
-            forward_two_steps,
-            promotion_rank_mask,
-            board,
-            moves,
-            color,
-            false,
-            false,
-        );
+        Self::generate_pawn_move_list(single_moves, forward_one_step, promotion_rank_mask, moves);
+        Self::generate_pawn_move_list(double_moves, forward_two_steps, promotion_rank_mask, moves);
 
         // Generate capture moves
         Self::generate_pawn_move_list(
             left_captures,
             forward_one_step - 1,
             promotion_rank_mask,
-            board,
             moves,
-            color,
-            true,
-            false,
         );
         Self::generate_pawn_move_list(
             right_captures,
             forward_one_step + 1,
             promotion_rank_mask,
-            board,
             moves,
-            color,
-            true,
-            false,
         );
 
         // Handle en passant captures
@@ -186,19 +160,12 @@ impl MoveGenerator {
                 while potential_en_passant_attackers != 0 {
                     let from = potential_en_passant_attackers.trailing_zeros() as u8;
                     let to = en_passant_square;
-                    let captured_piece = PieceType::Pawn;
-                    let flags = FLAG_EN_PASSANT;
                     let promoted_piece = None;
 
                     moves.push(ChessMove {
                         from,
                         to,
-                        captured_piece: Some(captured_piece),
                         promoted_piece,
-                        flags,
-                        old_castling_rights: board.castling_rights,
-                        old_en_passant_square: board.en_passant,
-                        old_halfmove_clock: board.half_move_clock,
                     });
 
                     potential_en_passant_attackers &= potential_en_passant_attackers - 1;
@@ -213,11 +180,7 @@ impl MoveGenerator {
         moves_bitboard: u64,
         step: i8,
         promotion_rank_mask: u64,
-        board: &Board,
         moves: &mut Vec<ChessMove>,
-        color: Color,
-        is_capture: bool,
-        is_en_passant: bool,
     ) {
         let mut moves_bits = moves_bitboard;
         while moves_bits != 0 {
@@ -237,15 +200,6 @@ impl MoveGenerator {
                         from: from as u8,
                         to,
                         promoted_piece: Some(promo_type),
-                        captured_piece: if is_capture {
-                            Some(board.piece_at(to, color.opposite()).unwrap())
-                        } else {
-                            None
-                        },
-                        flags: FLAG_PROMOTION,
-                        old_castling_rights: board.castling_rights,
-                        old_en_passant_square: board.en_passant,
-                        old_halfmove_clock: board.half_move_clock,
                     });
                 }
             } else {
@@ -254,19 +208,6 @@ impl MoveGenerator {
                     from: from as u8,
                     to,
                     promoted_piece: None,
-                    captured_piece: if is_capture {
-                        if is_en_passant {
-                            Some(PieceType::Pawn)
-                        } else {
-                            Some(board.piece_at(to, color.opposite()).unwrap())
-                        }
-                    } else {
-                        None
-                    },
-                    flags: if is_en_passant { FLAG_EN_PASSANT } else { 0 },
-                    old_castling_rights: board.castling_rights,
-                    old_en_passant_square: board.en_passant,
-                    old_halfmove_clock: board.half_move_clock,
                 });
             }
         }
@@ -298,45 +239,28 @@ impl MoveGenerator {
     ) {
         let mut knights = bitboard;
         let own_pieces = board.occupied[color as usize];
-        let opponent_pieces = board.occupied[color.opposite() as usize];
 
         while knights != 0 {
-            let from = knights.to_square() as u8;
+            let from = knights.to_square();
             let knight_moves = Self::knight_attacks(from) & !own_pieces;
 
-            let possible_moves = knight_moves & !opponent_pieces; // Normal moves
-            Self::generate_move_list(board, from, possible_moves, moves, color, None);
-
-            let possible_captures = knight_moves & opponent_pieces; // Capture moves
-            Self::generate_move_list(board, from, possible_captures, moves, color, Some(0));
+            Self::generate_move_list(from, knight_moves, moves);
 
             knights &= knights.0 - 1; // Remove this knight from the set
         }
     }
 
     /// Helper to generate a list of moves from a set of move possibilities.
-    fn generate_move_list(
-        board: &Board,
-        from: u8,
-        move_bitboard: BitBoard,
-        moves: &mut Vec<ChessMove>,
-        color: Color,
-        capture_flag: Option<u8>,
-    ) {
+    fn generate_move_list(from: u8, move_bitboard: BitBoard, moves: &mut Vec<ChessMove>) {
         let mut bits = move_bitboard;
         while bits != 0 {
-            let to = bits.to_square() as u8;
+            let to = bits.to_square();
             bits &= bits.0 - 1; // Clear the least significant bit
 
             moves.push(ChessMove {
                 from,
                 to,
                 promoted_piece: None,
-                captured_piece: board.piece_at(to, color.opposite()),
-                flags: capture_flag.unwrap_or(0),
-                old_castling_rights: board.castling_rights,
-                old_en_passant_square: board.en_passant,
-                old_halfmove_clock: board.half_move_clock,
             });
         }
     }
@@ -392,18 +316,13 @@ impl MoveGenerator {
     ) {
         let mut bishops = bitboard;
         let own_pieces = board.occupied[color as usize];
-        let opponent_pieces = board.occupied[1 - color as usize];
         let all_pieces = board.combined;
 
         while bishops != 0 {
-            let from = bishops.to_square() as u8;
-            let bishop_moves = Self::bishop_attacks(from, all_pieces);
+            let from = bishops.to_square();
+            let bishop_moves = Self::bishop_attacks(from, all_pieces) & !own_pieces;
 
-            let possible_moves = bishop_moves & !own_pieces & !opponent_pieces; // Normal moves
-            Self::generate_move_list(board, from, possible_moves, moves, color, None);
-
-            let possible_captures = bishop_moves & opponent_pieces; // Capture moves
-            Self::generate_move_list(board, from, possible_captures, moves, color, Some(0));
+            Self::generate_move_list(from, bishop_moves, moves);
 
             bishops &= bishops.0 - 1; // Remove this bishop from the set
         }
@@ -446,18 +365,13 @@ impl MoveGenerator {
     ) {
         let mut rooks = bitboard;
         let own_pieces = board.occupied[color as usize];
-        let opponent_pieces = board.occupied[1 - color as usize];
         let all_pieces = board.combined;
 
         while rooks != 0 {
             let from = rooks.to_square();
-            let rook_moves = Self::rook_attacks(from, all_pieces);
+            let rook_moves = Self::rook_attacks(from, all_pieces) & !own_pieces;
 
-            let possible_moves = rook_moves & !own_pieces & !opponent_pieces; // Normal moves
-            Self::generate_move_list(board, from, possible_moves, moves, color, None);
-
-            let possible_captures = rook_moves & opponent_pieces; // Capture moves
-            Self::generate_move_list(board, from, possible_captures, moves, color, Some(0));
+            Self::generate_move_list(from, rook_moves, moves);
 
             rooks &= rooks.0 - 1; // Remove this rook from the set
         }
@@ -498,18 +412,13 @@ impl MoveGenerator {
     ) {
         let mut queens = bitboard;
         let own_pieces = board.occupied[color as usize];
-        let opponent_pieces = board.occupied[1 - color as usize];
         let all_pieces = board.combined;
 
         while queens != 0 {
-            let from = queens.to_square() as u8;
-            let queen_moves = Self::queen_attacks(from, all_pieces);
+            let from = queens.to_square();
+            let queen_moves = Self::queen_attacks(from, all_pieces) & !own_pieces;
 
-            let possible_moves = queen_moves & !own_pieces & !opponent_pieces; // Normal moves
-            Self::generate_move_list(board, from, possible_moves, moves, color, None);
-
-            let possible_captures = queen_moves & opponent_pieces; // Capture moves
-            Self::generate_move_list(board, from, possible_captures, moves, color, Some(0));
+            Self::generate_move_list(from, queen_moves, moves);
 
             queens &= queens.0 - 1; // Remove this queen from the set
         }
@@ -529,19 +438,14 @@ impl MoveGenerator {
     ) {
         let mut kings = bitboard;
         let own_pieces = board.occupied[color as usize];
-        let opponent_pieces = board.occupied[1 - color as usize];
 
         while kings != 0 {
-            let from = kings.to_square() as u8;
+            let from = kings.to_square();
             // println!("own pieces: {}", own_pieces);
             let king_moves = Self::king_attacks(from) & !own_pieces;
             // println!("king_moves: {}", king_moves);
 
-            let possible_moves = king_moves & !opponent_pieces; // Normal moves
-            Self::generate_move_list(board, from, possible_moves, moves, color, None);
-
-            let possible_captures = king_moves & opponent_pieces; // Capture moves
-            Self::generate_move_list(board, from, possible_captures, moves, color, Some(0));
+            Self::generate_move_list(from, king_moves, moves);
 
             kings &= kings.0 - 1; // Remove this king from the set
 
@@ -557,11 +461,6 @@ impl MoveGenerator {
                         from,
                         to: 6,
                         promoted_piece: None,
-                        captured_piece: None,
-                        flags: FLAG_CASTLE,
-                        old_castling_rights: board.castling_rights,
-                        old_en_passant_square: board.en_passant,
-                        old_halfmove_clock: board.half_move_clock,
                     });
                 }
                 // White queenside castling
@@ -574,11 +473,6 @@ impl MoveGenerator {
                         from,
                         to: 2,
                         promoted_piece: None,
-                        captured_piece: None,
-                        flags: FLAG_CASTLE,
-                        old_castling_rights: board.castling_rights,
-                        old_en_passant_square: board.en_passant,
-                        old_halfmove_clock: board.half_move_clock,
                     });
                 }
             } else {
@@ -592,11 +486,6 @@ impl MoveGenerator {
                         from,
                         to: 62,
                         promoted_piece: None,
-                        captured_piece: None,
-                        flags: FLAG_CASTLE,
-                        old_castling_rights: board.castling_rights,
-                        old_en_passant_square: board.en_passant,
-                        old_halfmove_clock: board.half_move_clock,
                     });
                 }
                 // Black queenside castling
@@ -609,11 +498,6 @@ impl MoveGenerator {
                         from,
                         to: 58,
                         promoted_piece: None,
-                        captured_piece: None,
-                        flags: FLAG_CASTLE,
-                        old_castling_rights: board.castling_rights,
-                        old_en_passant_square: board.en_passant,
-                        old_halfmove_clock: board.half_move_clock,
                     });
                 }
             }
@@ -687,7 +571,7 @@ mod tests {
         let mut board = Board::from_fen(fen).unwrap();
         let moves = MoveGenerator::generate_legal_moves(&mut board);
         for m in &moves {
-            println!("{}", m.to_standard_notation());
+            println!("{}", m.to_standard_notation(&board));
         }
         assert_eq!(moves.len(), 20);
     }
@@ -697,7 +581,7 @@ mod tests {
         let mut board = Board::from_fen(fen).unwrap();
         let moves = MoveGenerator::generate_legal_moves(&mut board);
         for m in &moves {
-            println!("{}", m.to_standard_notation());
+            println!("{}", m.to_standard_notation(&board));
         }
         assert_eq!(moves.len(), 30);
     }
@@ -708,7 +592,7 @@ mod tests {
         let mut board = Board::from_fen(fen).unwrap();
         let moves = MoveGenerator::generate_legal_moves(&mut board);
         for m in &moves {
-            println!("{}", m.to_standard_notation());
+            println!("{}", m.to_standard_notation(&board));
         }
         assert_eq!(moves.len(), 26);
     }
@@ -719,7 +603,7 @@ mod tests {
         let mut board = Board::from_fen(fen).unwrap();
         let moves = MoveGenerator::generate_legal_moves(&mut board);
         for m in &moves {
-            println!("{}", m.to_standard_notation());
+            println!("{}", m.to_standard_notation(&board));
         }
         assert_eq!(moves.len(), 30);
     }
@@ -730,7 +614,7 @@ mod tests {
         let mut board = Board::from_fen(fen).unwrap();
         let moves = MoveGenerator::generate_legal_moves(&mut board);
         for m in &moves {
-            println!("{}", m.to_standard_notation());
+            println!("{}", m.to_standard_notation(&board));
         }
         assert_eq!(moves.len(), 30);
     }
@@ -740,7 +624,7 @@ mod tests {
         let mut board = Board::from_fen(fen).unwrap();
         let moves = MoveGenerator::generate_legal_moves(&mut board);
         for m in &moves {
-            println!("{}", m.to_standard_notation());
+            println!("{}", m.to_standard_notation(&board));
         }
         assert_eq!(moves.len(), 19);
     }
@@ -750,7 +634,7 @@ mod tests {
         let mut board = Board::from_fen(fen).unwrap();
         let moves = MoveGenerator::generate_legal_moves(&mut board);
         for m in &moves {
-            println!("{}", m.to_standard_notation());
+            println!("{}", m.to_standard_notation(&board));
         }
         assert_eq!(moves.len(), 22);
     }
@@ -761,7 +645,7 @@ mod tests {
         let mut board = Board::from_fen(fen).unwrap();
         let moves = MoveGenerator::generate_legal_moves(&mut board);
         for m in &moves {
-            println!("{}", m.to_standard_notation());
+            println!("{}", m.to_standard_notation(&board));
         }
         assert_eq!(moves.len(), 22);
 
@@ -775,7 +659,7 @@ mod tests {
         let mut board = Board::from_fen(fen).unwrap();
         let moves = MoveGenerator::generate_legal_moves(&mut board);
         for m in &moves {
-            println!("{}", m.to_standard_notation());
+            println!("{}", m.to_standard_notation(&board));
         }
         assert_eq!(moves.len(), 22);
 
@@ -788,7 +672,7 @@ mod tests {
         let mut board = Board::from_fen(fen).unwrap();
         let moves = MoveGenerator::generate_legal_moves(&mut board);
         for m in &moves {
-            println!("{}", m.to_standard_notation());
+            println!("{}", m.to_standard_notation(&board));
         }
         assert_eq!(moves.len(), 21);
 
@@ -801,7 +685,7 @@ mod tests {
         let mut board = Board::from_fen(fen).unwrap();
         let moves = MoveGenerator::generate_legal_moves(&mut board);
         for m in &moves {
-            println!("{}", m.to_standard_notation());
+            println!("{}", m.to_standard_notation(&board));
         }
         assert_eq!(moves.len(), 20);
 

@@ -115,7 +115,7 @@ pub fn minimax_ab(
         return (0, None);
     }
 
-    order_moves(&mut moves);
+    order_moves(board, &mut moves);
 
     for mv in moves {
         board.make_move(mv);
@@ -177,11 +177,13 @@ const KING_PIECE_TABLE: [i32; 64] = [
     10, 30, 20,
 ];
 
-fn order_moves(moves: &mut [ChessMove]) {
+fn order_moves(board: &Board, moves: &mut [ChessMove]) {
     moves.sort_by(|a, b| {
         // Order captures first
-        let a_captures = a.captured_piece.is_some();
-        let b_captures = b.captured_piece.is_some();
+        // let a_captures = a.captured_piece.is_some();
+        // let b_captures = b.captured_piece.is_some();
+        let a_captures = board.piece(a.to).is_some();
+        let b_captures = board.piece(b.to).is_some();
         b_captures.cmp(&a_captures)
     });
 }

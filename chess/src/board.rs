@@ -1,6 +1,7 @@
 use crate::{
     bitboard::BitBoard,
-    chess_move::{ChessMove, FLAG_CASTLE, FLAG_EN_PASSANT, FLAG_PROMOTION},
+    chess_move::ChessMove,
+    internal_move::{InternalMove, FLAG_CASTLE, FLAG_EN_PASSANT, FLAG_PROMOTION},
     move_generator::MoveGenerator,
     piece::{Color, PieceType},
 };
@@ -16,7 +17,7 @@ pub struct Board {
     pub side_to_move: Color,        // Current player to move
     pub half_move_clock: u32,       // Half-move clock for the fifty-move rule
     pub full_move_number: u32,      // Full-move counter, incremented after Black's move
-    moves: Vec<ChessMove>,
+    moves: Vec<InternalMove>,
     pub combined: BitBoard,
     positions: Vec<BitBoard>,
 }
@@ -333,12 +334,14 @@ impl Board {
         self.is_insufficient_material() || self.is_50_move_rule() || self.is_threefold_repetition()
     }
 
+    pub fn make_move(&mut self, m: ChessMove) {
+        let internal_move = self.chess_move_to_internal_move(m);
+        self.make(internal_move);
+    }
+
     /// Make a move on the board.
-    pub fn make_move(&mut self, mut m: ChessMove) {
+    pub(crate) fn make(&mut self, m: InternalMove) {
         // Store the castling rights before the move
-        m.old_castling_rights = self.castling_rights;
-        m.old_en_passant_square = self.en_passant;
-        m.old_halfmove_clock = self.half_move_clock;
         self.en_passant = None;
 
         // Special move handling before the actual move (for castling)
@@ -506,6 +509,44 @@ impl Board {
         false
     }
 
+    /// Converts a chess move to an internal move that holds additional
+    /// information to allow the board to unmake.
+    fn chess_move_to_internal_move(&self, m: ChessMove) -> InternalMove {
+        let mut flags = 0;
+        // check if the move is a castle move
+        if self.piece_at(m.from, self.side_to_move).unwrap() == PieceType::King
+            && (m.to as i8 - m.from as i8).abs() == 2
+        {
+            flags |= FLAG_CASTLE;
+        }
+        // Check for en passant
+        if self.piece_at(m.from, self.side_to_move).unwrap() == PieceType::Pawn
+            && self.piece_at(m.to, self.side_to_move.opposite()).is_none()
+            && m.to == self.en_passant.unwrap_or(0)
+        {
+            flags |= FLAG_EN_PASSANT;
+        }
+
+        // Check for promotion
+        if m.promoted_piece.is_some() {
+            flags |= FLAG_PROMOTION;
+        }
+
+        // Check for capture
+        let captured_piece = self.piece_at(m.to, self.side_to_move.opposite());
+
+        InternalMove {
+            from: m.from,
+            to: m.to,
+            promoted_piece: m.promoted_piece,
+            captured_piece,
+            flags,
+            old_castling_rights: self.castling_rights,
+            old_en_passant_square: self.en_passant,
+            old_halfmove_clock: self.half_move_clock,
+        }
+    }
+
     /// Used to set a piece on the board at a particular index.
     fn set_piece(&mut self, index: usize, piece_type: PieceType, color: Color) {
         let mut bitboard_index = self.bitboards[color as usize][piece_type as usize];
@@ -527,7 +568,7 @@ impl Board {
         self.bitboards[self.side_to_move.opposite() as usize][piece as usize] &= !mask;
     }
 
-    fn handle_castling(&mut self, m: ChessMove) {
+    fn handle_castling(&mut self, m: InternalMove) {
         if self.side_to_move == Color::White {
             if m.to == 6 {
                 // e1 to g1 (White Kingside)
@@ -550,7 +591,7 @@ impl Board {
         self.bitboards[self.side_to_move as usize][PieceType::Pawn as usize] &= !mask;
         self.bitboards[self.side_to_move as usize][new_piece as usize] |= mask;
     }
-    fn handle_en_passant(&mut self, m: ChessMove) {
+    fn handle_en_passant(&mut self, m: InternalMove) {
         // Assuming the pawn moves to 'm.to' and captures the pawn at 'm.from + 8' or 'm.from - 8'
         let captured_position = if self.side_to_move == Color::White {
             m.to - 8
@@ -560,7 +601,7 @@ impl Board {
         self.remove_piece(captured_position, PieceType::Pawn);
     }
 
-    fn unhandle_castling(&mut self, m: ChessMove) {
+    fn unhandle_castling(&mut self, m: InternalMove) {
         if self.side_to_move == Color::White {
             if m.to == 6 {
                 // Move the rook back from f1 to h1
@@ -578,7 +619,7 @@ impl Board {
         }
     }
 
-    fn unhandle_en_passant(&mut self, m: ChessMove) {
+    fn unhandle_en_passant(&mut self, m: InternalMove) {
         // Re-add the captured pawn at its original position
         let captured_position = if self.side_to_move == Color::Black {
             m.to + 8
@@ -602,7 +643,7 @@ impl Board {
     /// If a pawn moves two squares forward, the en passant target is
     /// set to the square between the from and to squares.
     /// Else, the en passant target is reset to None.
-    fn update_en_passant_target(&mut self, m: ChessMove, piece: PieceType) {
+    fn update_en_passant_target(&mut self, m: InternalMove, piece: PieceType) {
         // Reset en passant target at the start of each move
         self.en_passant = None;
 
@@ -723,7 +764,6 @@ fn square_to_index(square: &str) -> Option<u8> {
 }
 #[cfg(test)]
 mod tests {
-    use crate::chess_move::FLAG_EN_PASSANT;
 
     use super::*;
 
@@ -789,11 +829,6 @@ mod tests {
             from: 9,
             to: 17,
             promoted_piece: None,
-            captured_piece: None,
-            flags: 0,
-            old_castling_rights: [false; 4],
-            old_en_passant_square: None,
-            old_halfmove_clock: 0,
         };
         board.make_move(move_pawn);
         assert_eq!(
@@ -808,11 +843,6 @@ mod tests {
             from: 9,
             to: 25,
             promoted_piece: None,
-            captured_piece: Some(PieceType::Pawn),
-            flags: 0,
-            old_castling_rights: [false; 4],
-            old_en_passant_square: None,
-            old_halfmove_clock: 0,
         };
         board.make_move(move_pawn_capture);
         assert_eq!(
@@ -831,11 +861,6 @@ mod tests {
             from: 4,
             to: 6,
             promoted_piece: None,
-            captured_piece: None,
-            flags: FLAG_CASTLE,
-            old_castling_rights: [true, true, false, false],
-            old_en_passant_square: None,
-            old_halfmove_clock: 0,
         };
         board.make_move(castle_kingside_white);
         assert_eq!(
@@ -856,11 +881,6 @@ mod tests {
             from: 4,
             to: 2,
             promoted_piece: None,
-            captured_piece: None,
-            flags: FLAG_CASTLE,
-            old_castling_rights: [true, true, false, false],
-            old_en_passant_square: None,
-            old_halfmove_clock: 0,
         };
         board.make_move(castle_queenside_white);
         assert_eq!(
@@ -881,11 +901,6 @@ mod tests {
             from: 60,
             to: 58,
             promoted_piece: None,
-            captured_piece: None,
-            flags: FLAG_CASTLE,
-            old_castling_rights: [false, false, true, true],
-            old_en_passant_square: None,
-            old_halfmove_clock: 0,
         };
         board.make_move(castle_queenside_black);
         assert_eq!(
@@ -909,11 +924,6 @@ mod tests {
             from: 60,
             to: 62,
             promoted_piece: None,
-            captured_piece: None,
-            flags: FLAG_CASTLE,
-            old_castling_rights: [false, false, true, true],
-            old_en_passant_square: None,
-            old_halfmove_clock: 0,
         };
         board.print_board();
         board.make_move(castle_kingside_black);
@@ -936,11 +946,6 @@ mod tests {
             from: 7,
             to: 15,
             promoted_piece: None,
-            captured_piece: None,
-            flags: 0,
-            old_castling_rights: [true, true, false, false],
-            old_en_passant_square: None,
-            old_halfmove_clock: 0,
         };
         board.make_move(castle_kingside_white);
         assert!(board.castling_rights[1]);
@@ -954,11 +959,6 @@ mod tests {
             from: 48,
             to: 56,
             promoted_piece: Some(PieceType::Queen),
-            captured_piece: None,
-            flags: FLAG_PROMOTION,
-            old_castling_rights: [false; 4],
-            old_en_passant_square: None,
-            old_halfmove_clock: 0,
         };
         board.make_move(promote_queen_white);
         assert_eq!(
@@ -972,17 +972,11 @@ mod tests {
     }
     #[test]
     fn test_en_passant_black() {
-        let mut board = Board::from_fen("8/8/8/3Pp3/8/8/8/8 w - d6 0 1").unwrap();
-        board.en_passant = Some(27); // d6
+        let mut board = Board::from_fen("k7/8/8/3Pp3/8/8/8/K7 w - e6 0 1").unwrap();
         let en_passant_black = ChessMove {
             from: 35,
             to: 44,
             promoted_piece: None,
-            captured_piece: Some(PieceType::Pawn),
-            flags: FLAG_EN_PASSANT,
-            old_castling_rights: [false; 4],
-            old_en_passant_square: None,
-            old_halfmove_clock: 0,
         };
         board.print_board();
         board.make_move(en_passant_black);
@@ -1003,11 +997,6 @@ mod tests {
             from: 8,
             to: 16,
             promoted_piece: None,
-            captured_piece: None,
-            flags: 0,
-            old_castling_rights: [false; 4],
-            old_en_passant_square: None,
-            old_halfmove_clock: 0,
         };
         board.make_move(move_pawn);
         assert!(board.moves.len() == 1);
@@ -1030,11 +1019,6 @@ mod tests {
             from: 8,
             to: 17,
             promoted_piece: None,
-            captured_piece: Some(PieceType::Pawn),
-            flags: 0,
-            old_castling_rights: [false; 4],
-            old_en_passant_square: None,
-            old_halfmove_clock: 0,
         };
         board.make_move(move_pawn_capture);
         board.unmake();
@@ -1060,11 +1044,6 @@ mod tests {
             from: 4,
             to: 6,
             promoted_piece: None,
-            captured_piece: None,
-            flags: FLAG_CASTLE,
-            old_castling_rights: [true, true, false, false],
-            old_en_passant_square: None,
-            old_halfmove_clock: 0,
         };
         board.print_board();
         board.make_move(castle_kingside_white);
@@ -1093,11 +1072,6 @@ mod tests {
             from: 48,
             to: 56,
             promoted_piece: Some(PieceType::Queen),
-            captured_piece: None,
-            flags: FLAG_PROMOTION,
-            old_castling_rights: [false; 4],
-            old_en_passant_square: None,
-            old_halfmove_clock: 0,
         };
         board.print_board();
         board.make_move(promote_queen_white);
@@ -1127,11 +1101,6 @@ mod tests {
             from: 35,
             to: 44,
             promoted_piece: None,
-            captured_piece: Some(PieceType::Pawn),
-            flags: FLAG_EN_PASSANT,
-            old_castling_rights: [false; 4],
-            old_en_passant_square: None,
-            old_halfmove_clock: 0,
         };
         board.print_board();
         board.make_move(en_passant_move);
@@ -1156,11 +1125,6 @@ mod tests {
             from: 2,
             to: 38,
             promoted_piece: None,
-            captured_piece: Some(PieceType::Pawn),
-            flags: 0,
-            old_castling_rights: [true, true, true, true],
-            old_en_passant_square: Some(46),
-            old_halfmove_clock: 0,
         };
         board.make_move(chess_move);
         board.unmake();

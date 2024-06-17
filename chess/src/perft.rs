@@ -1,7 +1,4 @@
-use crate::{
-    board::Board,
-    move_generator::MoveGenerator,
-};
+use crate::{board::Board, move_generator::MoveGenerator};
 
 pub fn perft(depth: u32, board: &mut Board, is_top_level: bool) -> u64 {
     if depth == 0 {
@@ -16,14 +13,14 @@ pub fn perft(depth: u32, board: &mut Board, is_top_level: bool) -> u64 {
         board.make_move(current_move);
         let moves_after_move = perft(depth - 1, board, false);
         nodes += moves_after_move;
+        board.unmake();
         if is_top_level {
             println!(
                 "{} {}",
-                current_move.to_standard_notation(),
+                current_move.to_standard_notation(board),
                 moves_after_move
             );
         }
-        board.unmake();
     });
 
     if is_top_level {

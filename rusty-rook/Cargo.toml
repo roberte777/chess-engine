@@ -15,3 +15,16 @@ harness = false
 
 [profile.release]
 debug = true
+
+[lib]
+bench = false
+
+[[bin]]
+name = "engine"
+path = "src/bin/engine.rs"
+bench = false
+
+[[bin]]
+name = "uci"
+path = "src/bin/uci.rs"
+bench = false

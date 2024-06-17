@@ -513,18 +513,16 @@ impl Board {
     /// information to allow the board to unmake.
     fn chess_move_to_internal_move(&self, m: ChessMove) -> InternalMove {
         let mut flags = 0;
+        let from_piece = self.piece_at(m.from, self.side_to_move).unwrap();
         // check if the move is a castle move
-        if self.piece_at(m.from, self.side_to_move).unwrap() == PieceType::King
-            && (m.to as i8 - m.from as i8).abs() == 2
-        {
+        if from_piece == PieceType::King && (m.to as i8 - m.from as i8).abs() == 2 {
             flags |= FLAG_CASTLE;
         }
         // Check for en passant
-        if self.piece_at(m.from, self.side_to_move).unwrap() == PieceType::Pawn
-            && self.piece_at(m.to, self.side_to_move.opposite()).is_none()
-            && m.to == self.en_passant.unwrap_or(0)
-        {
-            flags |= FLAG_EN_PASSANT;
+        if let Some(en_passant) = self.en_passant {
+            if from_piece == PieceType::Pawn && m.to == en_passant {
+                flags |= FLAG_EN_PASSANT;
+            }
         }
 
         // Check for promotion

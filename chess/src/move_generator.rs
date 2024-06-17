@@ -296,13 +296,13 @@ impl MoveGenerator {
         color: Color,
         moves: &mut Vec<ChessMove>,
     ) {
-        let mut knights = bitboard.0;
+        let mut knights = bitboard;
         let own_pieces = board.occupied[color as usize];
-        let opponent_pieces = board.occupied[color.opposite() as usize].0;
+        let opponent_pieces = board.occupied[color.opposite() as usize];
 
         while knights != 0 {
-            let from = knights.trailing_zeros() as u8;
-            let knight_moves = Self::knight_attacks(from) & !own_pieces.0;
+            let from = knights.to_square() as u8;
+            let knight_moves = Self::knight_attacks(from) & !own_pieces;
 
             let possible_moves = knight_moves & !opponent_pieces; // Normal moves
             Self::generate_move_list(board, from, possible_moves, moves, color, None);
@@ -310,7 +310,7 @@ impl MoveGenerator {
             let possible_captures = knight_moves & opponent_pieces; // Capture moves
             Self::generate_move_list(board, from, possible_captures, moves, color, Some(0));
 
-            knights &= knights - 1; // Remove this knight from the set
+            knights &= knights.0 - 1; // Remove this knight from the set
         }
     }
 
@@ -318,15 +318,15 @@ impl MoveGenerator {
     fn generate_move_list(
         board: &Board,
         from: u8,
-        move_bitboard: u64,
+        move_bitboard: BitBoard,
         moves: &mut Vec<ChessMove>,
         color: Color,
         capture_flag: Option<u8>,
     ) {
         let mut bits = move_bitboard;
         while bits != 0 {
-            let to = bits.trailing_zeros() as u8;
-            bits &= bits - 1; // Clear the least significant bit
+            let to = bits.to_square() as u8;
+            bits &= bits.0 - 1; // Clear the least significant bit
 
             moves.push(ChessMove {
                 from,
@@ -390,13 +390,13 @@ impl MoveGenerator {
         color: Color,
         moves: &mut Vec<ChessMove>,
     ) {
-        let mut bishops = bitboard.0;
-        let own_pieces = board.occupied[color as usize].0;
-        let opponent_pieces = board.occupied[1 - color as usize].0;
-        let all_pieces = board.combined.0;
+        let mut bishops = bitboard;
+        let own_pieces = board.occupied[color as usize];
+        let opponent_pieces = board.occupied[1 - color as usize];
+        let all_pieces = board.combined;
 
         while bishops != 0 {
-            let from = bishops.trailing_zeros() as u8;
+            let from = bishops.to_square() as u8;
             let bishop_moves = Self::bishop_attacks(from, all_pieces);
 
             let possible_moves = bishop_moves & !own_pieces & !opponent_pieces; // Normal moves
@@ -405,12 +405,12 @@ impl MoveGenerator {
             let possible_captures = bishop_moves & opponent_pieces; // Capture moves
             Self::generate_move_list(board, from, possible_captures, moves, color, Some(0));
 
-            bishops &= bishops - 1; // Remove this bishop from the set
+            bishops &= bishops.0 - 1; // Remove this bishop from the set
         }
     }
 
     /// Generates bishop attacks from a given square, considering current blockages.
-    pub fn bishop_attacks(square: u8, all_pieces: u64) -> u64 {
+    pub fn bishop_attacks(square: u8, all_pieces: BitBoard) -> u64 {
         let mut attacks = 0u64;
         let directions = [7, 9, -7, -9]; // Diagonal movements: NW, NE, SE, SW
 
@@ -444,13 +444,13 @@ impl MoveGenerator {
         color: Color,
         moves: &mut Vec<ChessMove>,
     ) {
-        let mut rooks = bitboard.0;
-        let own_pieces = board.occupied[color as usize].0;
-        let opponent_pieces = board.occupied[1 - color as usize].0;
-        let all_pieces = board.combined.0;
+        let mut rooks = bitboard;
+        let own_pieces = board.occupied[color as usize];
+        let opponent_pieces = board.occupied[1 - color as usize];
+        let all_pieces = board.combined;
 
         while rooks != 0 {
-            let from = rooks.trailing_zeros() as u8;
+            let from = rooks.to_square();
             let rook_moves = Self::rook_attacks(from, all_pieces);
 
             let possible_moves = rook_moves & !own_pieces & !opponent_pieces; // Normal moves
@@ -459,12 +459,12 @@ impl MoveGenerator {
             let possible_captures = rook_moves & opponent_pieces; // Capture moves
             Self::generate_move_list(board, from, possible_captures, moves, color, Some(0));
 
-            rooks &= rooks - 1; // Remove this rook from the set
+            rooks &= rooks.0 - 1; // Remove this rook from the set
         }
     }
 
     /// Generates rook attacks from a given square, considering current blockages.
-    pub fn rook_attacks(square: u8, all_pieces: u64) -> u64 {
+    pub fn rook_attacks(square: u8, all_pieces: BitBoard) -> u64 {
         let mut attacks = 0u64;
         let directions = [8, -8, 1, -1]; // Vertical and horizontal movements
 
@@ -496,13 +496,13 @@ impl MoveGenerator {
         color: Color,
         moves: &mut Vec<ChessMove>,
     ) {
-        let mut queens = bitboard.0;
-        let own_pieces = board.occupied[color as usize].0;
-        let opponent_pieces = board.occupied[1 - color as usize].0;
-        let all_pieces = board.combined.0;
+        let mut queens = bitboard;
+        let own_pieces = board.occupied[color as usize];
+        let opponent_pieces = board.occupied[1 - color as usize];
+        let all_pieces = board.combined;
 
         while queens != 0 {
-            let from = queens.trailing_zeros() as u8;
+            let from = queens.to_square() as u8;
             let queen_moves = Self::queen_attacks(from, all_pieces);
 
             let possible_moves = queen_moves & !own_pieces & !opponent_pieces; // Normal moves
@@ -511,12 +511,12 @@ impl MoveGenerator {
             let possible_captures = queen_moves & opponent_pieces; // Capture moves
             Self::generate_move_list(board, from, possible_captures, moves, color, Some(0));
 
-            queens &= queens - 1; // Remove this queen from the set
+            queens &= queens.0 - 1; // Remove this queen from the set
         }
     }
 
     /// Generates queen attacks from a given square, considering current blockages.
-    fn queen_attacks(square: u8, all_pieces: u64) -> u64 {
+    fn queen_attacks(square: u8, all_pieces: BitBoard) -> u64 {
         // Combine rook and bishop attacks since queen can move as both
         Self::rook_attacks(square, all_pieces) | Self::bishop_attacks(square, all_pieces)
     }
@@ -527,12 +527,12 @@ impl MoveGenerator {
         color: Color,
         moves: &mut Vec<ChessMove>,
     ) {
-        let mut kings = bitboard.0;
-        let own_pieces = board.occupied[color as usize].0;
-        let opponent_pieces = board.occupied[1 - color as usize].0;
+        let mut kings = bitboard;
+        let own_pieces = board.occupied[color as usize];
+        let opponent_pieces = board.occupied[1 - color as usize];
 
         while kings != 0 {
-            let from = kings.trailing_zeros() as u8;
+            let from = kings.to_square() as u8;
             // println!("own pieces: {}", own_pieces);
             let king_moves = Self::king_attacks(from) & !own_pieces;
             // println!("king_moves: {}", king_moves);
@@ -543,7 +543,7 @@ impl MoveGenerator {
             let possible_captures = king_moves & opponent_pieces; // Capture moves
             Self::generate_move_list(board, from, possible_captures, moves, color, Some(0));
 
-            kings &= kings - 1; // Remove this king from the set
+            kings &= kings.0 - 1; // Remove this king from the set
 
             // Generate castling moves if applicable
             if color == Color::White {

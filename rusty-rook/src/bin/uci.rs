@@ -60,7 +60,7 @@ fn handle_position(board: &mut Board, line: &str) {
 }
 
 fn handle_go(board: &mut Board, output: &mut impl Write) {
-    let (_, mv) = minimax_ab(board, 6, 0, i32::MIN, i32::MAX);
+    let (_, mv) = minimax_ab(board, 7, 0, i32::MIN, i32::MAX);
     if let Some(mv) = mv {
         board.print_board();
         writeln!(output, "bestmove {}", mv.to_standard_notation()).expect("Error writing output");

@@ -6,7 +6,6 @@ use std::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Hash, Default)]
 pub struct BitBoard(pub u64);
 
-pub const EMPTY: BitBoard = BitBoard(0);
 // Impl BitAnd
 impl BitAnd for BitBoard {
     type Output = BitBoard;
@@ -218,6 +217,63 @@ impl Not for &BitBoard {
     #[inline]
     fn not(self) -> BitBoard {
         BitBoard(!self.0)
+    }
+}
+
+impl BitOrAssign<u64> for BitBoard {
+    #[inline]
+    fn bitor_assign(&mut self, other: u64) {
+        self.0 |= other;
+    }
+}
+
+impl BitAndAssign<u64> for BitBoard {
+    #[inline]
+    fn bitand_assign(&mut self, other: u64) {
+        self.0 &= other;
+    }
+}
+
+impl BitAnd<BitBoard> for u64 {
+    type Output = BitBoard;
+
+    #[inline]
+    fn bitand(self, other: BitBoard) -> BitBoard {
+        BitBoard(self & other.0)
+    }
+}
+
+impl BitAnd<u64> for BitBoard {
+    type Output = BitBoard;
+
+    #[inline]
+    fn bitand(self, other: u64) -> BitBoard {
+        BitBoard(self.0 & other)
+    }
+}
+
+impl BitOr<BitBoard> for u64 {
+    type Output = BitBoard;
+
+    #[inline]
+    fn bitor(self, other: BitBoard) -> BitBoard {
+        BitBoard(self | other.0)
+    }
+}
+
+impl BitOr<u64> for BitBoard {
+    type Output = BitBoard;
+
+    #[inline]
+    fn bitor(self, other: u64) -> BitBoard {
+        BitBoard(self.0 | other)
+    }
+}
+
+impl PartialEq<u64> for BitBoard {
+    #[inline]
+    fn eq(&self, other: &u64) -> bool {
+        self.0 == *other
     }
 }
 

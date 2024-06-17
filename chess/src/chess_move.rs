@@ -1,4 +1,7 @@
-use crate::{board::Board, piece::PieceType};
+use crate::{
+    board::Board,
+    piece::{Color, PieceType},
+};
 
 #[derive(Clone, Copy, Debug)]
 pub struct ChessMove {
@@ -17,7 +20,7 @@ impl ChessMove {
     fn index_to_algebraic(index: u8) -> String {
         let file = (index % 8) as char; // file, from 'a' to 'h'
         let rank = (index / 8) + 1; // rank, from 1 to 8
-        format!("{}{}", (file as u8 + 'a' as u8) as char, rank)
+        format!("{}{}", (file as u8 + b'a') as char, rank)
     }
 
     pub fn to_standard_notation(&self) -> String {
@@ -47,23 +50,43 @@ impl ChessMove {
     }
     fn algebraic_to_index(algebraic: &str) -> u8 {
         let bytes = algebraic.as_bytes();
-        let file = bytes[0] as u8 - b'a'; // 'a' to 'h' -> 0 to 7
-        let rank = bytes[1] as u8 - b'1'; // '1' to '8' -> 0 to 7
+        let file = bytes[0] - b'a'; // 'a' to 'h' -> 0 to 7
+        let rank = bytes[1] - b'1'; // '1' to '8' -> 0 to 7
         rank * 8 + file
     }
 
     pub fn from_standard_notation(s: &str, board: &Board) -> Option<ChessMove> {
         // Castling
         if s == "O-O" || s == "O-O-O" {
+            let from = match board.side_to_move {
+                Color::White => 4,
+                Color::Black => 60,
+            };
+            let to = match board.side_to_move {
+                Color::White => {
+                    if s == "O-O" {
+                        6
+                    } else {
+                        2
+                    }
+                }
+                Color::Black => {
+                    if s == "O-O" {
+                        62
+                    } else {
+                        58
+                    }
+                }
+            };
             return Some(ChessMove {
-                from: if s == "O-O" { 4 } else { 4 }, // E.g., e1 for white
-                to: if s == "O-O" { 6 } else { 2 },   // g1 or c1 for white
+                from,
+                to,
                 promoted_piece: None,
                 captured_piece: None,
                 flags: FLAG_CASTLE,
-                old_castling_rights: [false; 4],
-                old_en_passant_square: None,
-                old_halfmove_clock: 0,
+                old_castling_rights: board.castling_rights,
+                old_en_passant_square: board.en_passant,
+                old_halfmove_clock: board.half_move_clock,
             });
         }
 
@@ -111,11 +134,11 @@ impl ChessMove {
             from,
             to,
             promoted_piece,
-            captured_piece: captured_piece, // This needs to be set based on the board state.
+            captured_piece,
             flags,
-            old_castling_rights: [false; 4],
-            old_en_passant_square: None,
-            old_halfmove_clock: 0,
+            old_castling_rights: board.castling_rights,
+            old_en_passant_square: board.en_passant,
+            old_halfmove_clock: board.half_move_clock,
         })
     }
 }

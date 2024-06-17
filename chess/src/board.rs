@@ -18,8 +18,6 @@ pub struct Board {
     pub full_move_number: u32,      // Full-move counter, incremented after Black's move
     moves: Vec<ChessMove>,
     pub combined: BitBoard,
-    pinned: BitBoard,
-    checkers: BitBoard,
     positions: Vec<BitBoard>,
 }
 
@@ -34,8 +32,6 @@ impl Board {
         let full_move_number = 1;
         let moves = Vec::new();
         let combined = BitBoard::default();
-        let pinned = BitBoard::default();
-        let checkers = BitBoard::default();
         let positions = Vec::new();
 
         Board {
@@ -48,8 +44,6 @@ impl Board {
             full_move_number,
             moves,
             combined,
-            pinned,
-            checkers,
             positions,
         }
     }
@@ -187,8 +181,8 @@ impl Board {
         // En passant target square
         fen.push(' ');
         if let Some(square) = self.en_passant {
-            let file = (square % 8) as u8 + b'a';
-            let rank = (square / 8) as u8 + b'1';
+            let file = (square % 8) + b'a';
+            let rank = (square / 8) + b'1';
             fen.push(file as char);
             fen.push(rank as char);
         } else {
@@ -208,7 +202,7 @@ impl Board {
 
     fn set_piece(&mut self, index: usize, piece_type: PieceType, color: Color) {
         let mut bitboard_index = self.bitboards[color as usize][piece_type as usize];
-        bitboard_index.0 |= 1 << index;
+        bitboard_index |= 1 << index;
         self.bitboards[color as usize][piece_type as usize] = bitboard_index;
     }
     /// Prints the board in a human-readable format.
@@ -243,7 +237,7 @@ impl Board {
             .iter()
             .enumerate()
             {
-                if self.bitboards[color_idx][piece_idx].0 & masks[0] != 0 {
+                if self.bitboards[color_idx][piece_idx] & masks[0] != BitBoard(0) {
                     return match (piece_type, color) {
                         (PieceType::Pawn, Color::White) => 'P',
                         (PieceType::Pawn, Color::Black) => 'p',
@@ -365,13 +359,13 @@ impl Board {
     fn move_piece(&mut self, from: u8, to: u8, piece: PieceType) {
         let from_mask = 1 << from;
         let to_mask = 1 << to;
-        self.bitboards[self.side_to_move as usize][piece as usize].0 &= !from_mask;
-        self.bitboards[self.side_to_move as usize][piece as usize].0 |= to_mask;
+        self.bitboards[self.side_to_move as usize][piece as usize] &= !from_mask;
+        self.bitboards[self.side_to_move as usize][piece as usize] |= to_mask;
     }
 
     fn remove_piece(&mut self, position: u8, piece: PieceType) {
         let mask = 1 << position;
-        self.bitboards[self.side_to_move.opposite() as usize][piece as usize].0 &= !mask;
+        self.bitboards[self.side_to_move.opposite() as usize][piece as usize] &= !mask;
     }
 
     fn handle_castling(&mut self, m: ChessMove) {
@@ -394,8 +388,8 @@ impl Board {
 
     fn promote_pawn(&mut self, square: u8, new_piece: PieceType) {
         let mask = 1 << square;
-        self.bitboards[self.side_to_move as usize][PieceType::Pawn as usize].0 &= !mask;
-        self.bitboards[self.side_to_move as usize][new_piece as usize].0 |= mask;
+        self.bitboards[self.side_to_move as usize][PieceType::Pawn as usize] &= !mask;
+        self.bitboards[self.side_to_move as usize][new_piece as usize] |= mask;
     }
     fn handle_en_passant(&mut self, m: ChessMove) {
         // Assuming the pawn moves to 'm.to' and captures the pawn at 'm.from + 8' or 'm.from - 8'
@@ -418,7 +412,7 @@ impl Board {
 
     pub fn piece_at(&self, square: u8, color: Color) -> Option<PieceType> {
         for piece_type in 0..6 {
-            if self.bitboards[color as usize][piece_type].0 & (1 << square) != 0 {
+            if self.bitboards[color as usize][piece_type] & (1 << square) != BitBoard(0) {
                 return Some(PieceType::from(piece_type));
             }
         }
@@ -487,8 +481,8 @@ impl Board {
     fn demote_pawn(&mut self, square: u8, piece: PieceType) {
         // Replace the promoted piece back to a pawn
         let mask = 1 << square;
-        self.bitboards[self.side_to_move as usize][piece as usize].0 &= !mask;
-        self.bitboards[self.side_to_move as usize][PieceType::Pawn as usize].0 |= mask;
+        self.bitboards[self.side_to_move as usize][piece as usize] &= !mask;
+        self.bitboards[self.side_to_move as usize][PieceType::Pawn as usize] |= mask;
     }
     pub fn update_attack_and_defense(&mut self) {
         // Reset occupied bitboards
@@ -523,38 +517,37 @@ impl Board {
         let opponent_pieces = self.bitboards[attacker_color as usize];
 
         // check attacks from pawns
-        if MoveGenerator::pawn_attacks(square, attacker_color.opposite()).0
-            & opponent_pieces[PieceType::Pawn as usize].0
-            != 0
+        if MoveGenerator::pawn_attacks(square, attacker_color.opposite())
+            & opponent_pieces[PieceType::Pawn as usize]
+            != BitBoard(0)
         {
             return true;
         }
 
         // Check attacks from knights
-        if MoveGenerator::knight_attacks(square) & opponent_pieces[PieceType::Knight as usize].0
-            != 0
+        if MoveGenerator::knight_attacks(square) & opponent_pieces[PieceType::Knight as usize] != 0
         {
             return true;
         }
 
         // Check attacks from kings
-        if MoveGenerator::king_attacks(square) & opponent_pieces[PieceType::King as usize].0 != 0 {
+        if MoveGenerator::king_attacks(square) & opponent_pieces[PieceType::King as usize] != 0 {
             return true;
         }
 
         // Check attacks from rooks and queens (horizontal and vertical attacks)
-        if (MoveGenerator::rook_attacks(square, self.combined.0)
-            & (opponent_pieces[PieceType::Rook as usize].0
-                | opponent_pieces[PieceType::Queen as usize].0))
+        if (MoveGenerator::rook_attacks(square, self.combined)
+            & (opponent_pieces[PieceType::Rook as usize]
+                | opponent_pieces[PieceType::Queen as usize]))
             != 0
         {
             return true;
         }
 
         // Check attacks from bishops and queens (diagonal attacks)
-        if (MoveGenerator::bishop_attacks(square, self.combined.0)
-            & (opponent_pieces[PieceType::Bishop as usize].0
-                | opponent_pieces[PieceType::Queen as usize].0))
+        if (MoveGenerator::bishop_attacks(square, self.combined)
+            & (opponent_pieces[PieceType::Bishop as usize]
+                | opponent_pieces[PieceType::Queen as usize]))
             != 0
         {
             return true;
@@ -564,9 +557,7 @@ impl Board {
     }
     /// Checks if the current player's king is in check.
     pub fn is_king_in_check(&self, color: Color) -> bool {
-        let king_position = self.bitboards[color as usize][PieceType::King as usize]
-            .0
-            .trailing_zeros() as u8;
+        let king_position = self.bitboards[color as usize][PieceType::King as usize].to_square();
         self.is_square_attacked(king_position, color.opposite())
     }
 
@@ -582,7 +573,7 @@ impl Board {
             ]
             .iter()
             {
-                if self.bitboards[*color as usize][*piece as usize].0 & (1 << square) != 0 {
+                if self.bitboards[*color as usize][*piece as usize] & (1 << square) != 0 {
                     return Some((*color, *piece));
                 }
             }
@@ -601,7 +592,7 @@ impl Board {
 
         for color in [Color::White, Color::Black].iter() {
             for piece in [PieceType::Pawn, PieceType::Rook, PieceType::Queen].iter() {
-                if self.bitboards[*color as usize][*piece as usize].0 != 0 {
+                if self.bitboards[*color as usize][*piece as usize] != 0 {
                     return false; // Having a pawn, rook, or queen means sufficient material
                 }
             }
@@ -615,8 +606,8 @@ impl Board {
             let dark_squares = !light_squares; // Represents dark colored squares
 
             // Use bitwise AND to filter bishops on light and dark squares
-            light_squared_bishops[*color as usize] = BitBoard(bishops.0 & light_squares).popcnt();
-            dark_squared_bishops[*color as usize] = BitBoard(bishops.0 & dark_squares).popcnt();
+            light_squared_bishops[*color as usize] = (bishops & light_squares).popcnt();
+            dark_squared_bishops[*color as usize] = (bishops & dark_squares).popcnt();
         }
 
         for i in 0..2 {
@@ -647,6 +638,12 @@ impl Board {
             }
         }
         count >= 3
+    }
+}
+
+impl Default for Board {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -741,7 +738,7 @@ mod tests {
         };
         board.make_move(move_pawn);
         assert_eq!(
-            board.bitboards[Color::White as usize][PieceType::Pawn as usize].0,
+            board.bitboards[Color::White as usize][PieceType::Pawn as usize],
             1 << 17
         );
     }
@@ -760,11 +757,11 @@ mod tests {
         };
         board.make_move(move_pawn_capture);
         assert_eq!(
-            board.bitboards[Color::White as usize][PieceType::Pawn as usize].0,
+            board.bitboards[Color::White as usize][PieceType::Pawn as usize],
             1 << 25
         );
         assert_eq!(
-            board.bitboards[Color::Black as usize][PieceType::Pawn as usize].0,
+            board.bitboards[Color::Black as usize][PieceType::Pawn as usize],
             0
         );
     }
@@ -783,11 +780,11 @@ mod tests {
         };
         board.make_move(castle_kingside_white);
         assert_eq!(
-            board.bitboards[Color::White as usize][PieceType::King as usize].0,
+            board.bitboards[Color::White as usize][PieceType::King as usize],
             1 << 6
         );
         assert_eq!(
-            board.bitboards[Color::White as usize][PieceType::Rook as usize].0,
+            board.bitboards[Color::White as usize][PieceType::Rook as usize],
             1 << 5
         );
         assert!(!board.castling_rights[0]);
@@ -808,11 +805,11 @@ mod tests {
         };
         board.make_move(castle_queenside_white);
         assert_eq!(
-            board.bitboards[Color::White as usize][PieceType::King as usize].0,
+            board.bitboards[Color::White as usize][PieceType::King as usize],
             1 << 2
         );
         assert_eq!(
-            board.bitboards[Color::White as usize][PieceType::Rook as usize].0,
+            board.bitboards[Color::White as usize][PieceType::Rook as usize],
             1 << 3
         );
         assert!(!board.castling_rights[0]);
@@ -833,11 +830,11 @@ mod tests {
         };
         board.make_move(castle_queenside_black);
         assert_eq!(
-            board.bitboards[Color::Black as usize][PieceType::King as usize].0,
+            board.bitboards[Color::Black as usize][PieceType::King as usize],
             1 << 58
         );
         assert_eq!(
-            board.bitboards[Color::Black as usize][PieceType::Rook as usize].0,
+            board.bitboards[Color::Black as usize][PieceType::Rook as usize],
             (1 << 59) | (1 << 63)
         );
         assert!(!board.castling_rights[2]);
@@ -863,11 +860,11 @@ mod tests {
         board.make_move(castle_kingside_black);
         board.print_board();
         assert_eq!(
-            board.bitboards[Color::Black as usize][PieceType::King as usize].0,
+            board.bitboards[Color::Black as usize][PieceType::King as usize],
             1 << 62
         );
         assert_eq!(
-            board.bitboards[Color::Black as usize][PieceType::Rook as usize].0,
+            board.bitboards[Color::Black as usize][PieceType::Rook as usize],
             (1 << 61) | (1 << 56)
         );
         assert!(!board.castling_rights[2]);
@@ -906,11 +903,11 @@ mod tests {
         };
         board.make_move(promote_queen_white);
         assert_eq!(
-            board.bitboards[Color::White as usize][PieceType::Queen as usize].0,
+            board.bitboards[Color::White as usize][PieceType::Queen as usize],
             1 << 56
         );
         assert_eq!(
-            board.bitboards[Color::White as usize][PieceType::Pawn as usize].0,
+            board.bitboards[Color::White as usize][PieceType::Pawn as usize],
             0
         );
     }
@@ -932,11 +929,11 @@ mod tests {
         board.make_move(en_passant_black);
         board.print_board();
         assert_eq!(
-            board.bitboards[Color::Black as usize][PieceType::Pawn as usize].0,
+            board.bitboards[Color::Black as usize][PieceType::Pawn as usize],
             0
         );
         assert_eq!(
-            board.bitboards[Color::White as usize][PieceType::Pawn as usize].0,
+            board.bitboards[Color::White as usize][PieceType::Pawn as usize],
             1 << 44
         );
     }
@@ -957,7 +954,7 @@ mod tests {
         assert!(board.moves.len() == 1);
         board.unmake();
         assert_eq!(
-            board.bitboards[Color::White as usize][PieceType::Pawn as usize].0,
+            board.bitboards[Color::White as usize][PieceType::Pawn as usize],
             1 << 8
         );
         assert_eq!(board.half_move_clock, 0);
@@ -983,11 +980,11 @@ mod tests {
         board.make_move(move_pawn_capture);
         board.unmake();
         assert_eq!(
-            board.bitboards[Color::White as usize][PieceType::Pawn as usize].0,
+            board.bitboards[Color::White as usize][PieceType::Pawn as usize],
             1 << 8
         );
         assert_eq!(
-            board.bitboards[Color::Black as usize][PieceType::Pawn as usize].0,
+            board.bitboards[Color::Black as usize][PieceType::Pawn as usize],
             1 << 17
         );
         assert_eq!(board.half_move_clock, 10);
@@ -1016,11 +1013,11 @@ mod tests {
         board.unmake();
         board.print_board();
         assert_eq!(
-            board.bitboards[Color::White as usize][PieceType::King as usize].0,
+            board.bitboards[Color::White as usize][PieceType::King as usize],
             1 << 4
         );
         assert_eq!(
-            board.bitboards[Color::White as usize][PieceType::Rook as usize].0,
+            board.bitboards[Color::White as usize][PieceType::Rook as usize],
             (1 << 7) | (1 << 0)
         );
         assert_eq!(board.half_move_clock, 0);
@@ -1049,11 +1046,11 @@ mod tests {
         board.unmake();
         board.print_board();
         assert_eq!(
-            board.bitboards[Color::White as usize][PieceType::Pawn as usize].0,
+            board.bitboards[Color::White as usize][PieceType::Pawn as usize],
             1 << 48
         );
         assert_eq!(
-            board.bitboards[Color::White as usize][PieceType::Queen as usize].0,
+            board.bitboards[Color::White as usize][PieceType::Queen as usize],
             0
         );
         assert_eq!(board.half_move_clock, 0);
@@ -1083,11 +1080,11 @@ mod tests {
         board.unmake();
         board.print_board();
         assert_eq!(
-            board.bitboards[Color::White as usize][PieceType::Pawn as usize].0,
+            board.bitboards[Color::White as usize][PieceType::Pawn as usize],
             1 << 35
         );
         assert_eq!(
-            board.bitboards[Color::Black as usize][PieceType::Pawn as usize].0,
+            board.bitboards[Color::Black as usize][PieceType::Pawn as usize],
             1 << 36
         );
     }

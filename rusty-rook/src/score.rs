@@ -2,7 +2,7 @@ use chess::{
     board::Board,
     chess_move::ChessMove,
     move_generator::MoveGenerator,
-    piece::{Color, Piece, PieceType},
+    piece::{Color, PieceType},
 };
 
 pub fn score(board: &mut Board) -> i32 {
@@ -177,7 +177,7 @@ const KING_PIECE_TABLE: [i32; 64] = [
     10, 30, 20,
 ];
 
-fn order_moves(moves: &mut Vec<ChessMove>) {
+fn order_moves(moves: &mut [ChessMove]) {
     moves.sort_by(|a, b| {
         // Order captures first
         let a_captures = a.captured_piece.is_some();

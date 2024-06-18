@@ -316,8 +316,10 @@ impl Board {
     /// assert_eq!(piece, Some(PieceType::Rook));
     /// ```
     pub fn piece_at(&self, square: u8, color: Color) -> Option<PieceType> {
+        let square_mask = 1 << square;
+
         for piece_type in 0..6 {
-            if self.bitboards[color as usize][piece_type] & (1 << square) != BitBoard(0) {
+            if self.bitboards[color as usize][piece_type] & square_mask != BitBoard(0) {
                 return Some(PieceType::from(piece_type));
             }
         }
